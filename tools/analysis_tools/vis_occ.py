@@ -283,8 +283,9 @@ def main():
     results_dir = args.res
 
     # load dataset information
-    info_path = \
-        args.root_path + '/bevdetv2-nuscenes_infos_%s.pkl' % args.version
+    # 修复: 直接使用 root_path/data/nuscenes 路径
+    data_root = os.path.join(args.root_path, 'data/nuscenes') if not args.root_path.endswith('nuscenes') else args.root_path
+    info_path = os.path.join(data_root, 'bevdetv2-nuscenes_infos_%s.pkl' % args.version)
     dataset = pickle.load(open(info_path, 'rb'))
     # prepare save path and medium
     vis_dir = args.save_path
@@ -321,7 +322,13 @@ def main():
         gt_occ_path = info['occ_path']
 
         pred_occ = np.load(pred_occ_path)['pred']
-        gt_data = np.load(os.path.join(args.root_path, gt_occ_path, 'labels.npz'))
+        # 修复: 如果 occ_path 是相对路径，直接使用 root_path 拼接
+        if gt_occ_path.startswith('./'):
+            # occ_path 已经包含完整相对路径，去掉前导 './'
+            gt_full_path = os.path.join(args.root_path, gt_occ_path[2:], 'labels.npz')
+        else:
+            gt_full_path = os.path.join(args.root_path, gt_occ_path, 'labels.npz')
+        gt_data = np.load(gt_full_path)
         voxel_label = gt_data['semantics']
         lidar_mask = gt_data['mask_lidar']
         camera_mask = gt_data['mask_camera']

@@ -178,15 +178,24 @@ class LSSViewTransformer(BaseModule):
         # (D, fH, fW, 3) - (B, N, 1, 1, 1, 3) --> (B, N, D, fH, fW, 3)
         points = self.frustum.to(sensor2ego) - post_trans.view(B, N, 1, 1, 1, 3)
         # (B, N, 1, 1, 1, 3, 3) @ (B, N, D, fH, fW, 3, 1)  --> (B, N, D, fH, fW, 3, 1)
-        points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3)\
-            .matmul(points.unsqueeze(-1))
+        # 使用 CPU fallback 避免 cuSOLVER 错误
+        try:
+            post_rots_inv = torch.inverse(post_rots)
+        except RuntimeError:
+            post_rots_inv = torch.inverse(post_rots.cpu()).to(post_rots.device)
+        points = post_rots_inv.view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
 
         # cam_to_ego
         # (B, N_, D, fH, fW, 3, 1)  3: (du, dv, d)
         points = torch.cat(
             (points[..., :2, :] * points[..., 2:3, :], points[..., 2:3, :]), 5)
         # R_{c->e} @ K^-1
-        combine = sensor2ego[:, :, :3, :3].matmul(torch.inverse(cam2imgs))
+        # 使用 CPU fallback 避免 cuSOLVER 错误
+        try:
+            cam2imgs_inv = torch.inverse(cam2imgs)
+        except RuntimeError:
+            cam2imgs_inv = torch.inverse(cam2imgs.cpu()).to(cam2imgs.device)
+        combine = sensor2ego[:, :, :3, :3].matmul(cam2imgs_inv)
         # (B, N, 1, 1, 1, 3, 3) @ (B, N, D, fH, fW, 3, 1)  --> (B, N, D, fH, fW, 3, 1)
         # --> (B, N, D, fH, fW, 3)
         points = combine.view(B, N, 1, 1, 1, 3, 3).matmul(points).squeeze(-1)

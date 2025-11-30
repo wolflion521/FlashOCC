@@ -69,10 +69,21 @@ class BEVDet(CenterPoint):
 
         # calculate the transformation from adj sensor to key ego
         keyego2global = ego2globals[:, 0,  ...].unsqueeze(1)    # (B, 1, 4, 4)
-        global2keyego = torch.inverse(keyego2global.double())   # (B, 1, 4, 4)
+        # 使用 CPU 求逆避免 cuSOLVER 错误
+        try:
+            # 尝试在 GPU 上求逆
+            if hasattr(torch.linalg, 'inv'):
+                global2keyego = torch.linalg.inv(keyego2global.float())   # (B, 1, 4, 4)
+            else:
+                global2keyego = torch.inverse(keyego2global.float())   # fallback
+        except RuntimeError as e:
+            # GPU cuSOLVER 失败，使用 CPU 求逆
+            print(f'Warning: GPU matrix inversion failed, using CPU fallback')
+            keyego2global_cpu = keyego2global.float().cpu()
+            global2keyego = torch.inverse(keyego2global_cpu).cuda()   # (B, 1, 4, 4)
+        
         sensor2keyegos = \
-            global2keyego @ ego2globals.double() @ sensor2egos.double()     # (B, N_views, 4, 4)
-        sensor2keyegos = sensor2keyegos.float()
+            global2keyego @ ego2globals.float() @ sensor2egos.float()     # (B, N_views, 4, 4)
 
         return [imgs, sensor2keyegos, ego2globals, intrins,
                 post_rots, post_trans, bda]

@@ -99,10 +99,10 @@ def nuscenes_data_prep(root_path, info_prefix, version, max_sweeps=10):
         root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
 
-def add_ann_adj_info(extra_tag):
-    nuscenes_version = 'v1.0-trainval'
+def add_ann_adj_info(extra_tag, nuscenes_version='v1.0-trainval'):
     dataroot = './data/nuscenes/'
     nuscenes = NuScenes(nuscenes_version, dataroot)
+    # mini 版本使用 train 和 val，trainval 版本也使用 train 和 val
     for set in ['train', 'val']:
         dataset = pickle.load(
             open('%s/%s_infos_%s.pkl' % (dataroot, extra_tag, set), 'rb'))
@@ -136,7 +136,7 @@ def add_ann_adj_info(extra_tag):
 if __name__ == '__main__':
     dataset = 'nuscenes'
     version = 'v1.0'
-    train_version = f'{version}-trainval'
+    train_version = f'{version}-mini'  # 使用 mini 版本
     root_path = 'data/nuscenes'
     extra_tag = 'bevdetv2-nuscenes'
     nuscenes_data_prep(
@@ -146,4 +146,4 @@ if __name__ == '__main__':
         max_sweeps=0)
 
     print('add_ann_infos')
-    add_ann_adj_info(extra_tag)
+    add_ann_adj_info(extra_tag, train_version)  # 传递版本参数
