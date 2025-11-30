@@ -1,0 +1,330 @@
+{
+  
+  "classification_framework": {
+    "description": "Comprehensive classification framework for 3D occupancy perception algorithms in autonomous driving, extracted from survey 'A Survey on Occupancy Perception for Autonomous Driving: The Information Fusion Perspective'",
+    "hierarchy": {
+      "Domain": "Domain",
+      "Input Modality": "Input Modality",
+      "Core Pipeline": "Core Pipeline",
+      "Component Design": "Component Design",
+      "Implementation Details": "Implementation Details"
+    },
+    "classification_dimensions": {
+      "input_modality": {
+        "definition": "Primary sensor data source used by the algorithm",
+        "enumeration": [
+          "LiDAR-Centric",
+          "Vision-Centric (Camera)",
+          "Radar-Centric",
+          "Multi-Modal"
+        ],
+        "sub_categories": {
+          "vision_centric": {
+            "camera_setup": ["Monocular", "Multi-Camera", "Stereo"],
+            "image_type": ["RGB", "RGB-D"],
+            "temporal_input": ["Single-Frame", "Multi-Frame"]
+          },
+          "lidar_centric": {
+            "point_cloud_density": ["Sparse", "Dense"],
+            "temporal_input": ["Single-Sweep", "Multi-Sweep"]
+          },
+          "multi_modal": {
+            "modality_combination": [
+              "Camera + LiDAR",
+              "Camera + Radar",
+              "Camera + LiDAR + Radar",
+              "Camera + Text + LiDAR"
+            ]
+          }
+        }
+      },
+      
+      "network_architecture": {
+        "definition": "Overall structural design of the neural network",
+        "enumeration": [
+          "CNN-Based",
+          "Transformer-Based",
+          "Hybrid CNN-Transformer",
+          "NeRF-Based",
+          "Gaussian-Based"
+        ],
+        "sub_categories": {
+          "feature_extractor": {
+            "backbone_type": ["ResNet", "VGG", "ViT", "Swin Transformer", "PointNet", "PointPillars", "VoxelNet"],
+            "pretraining": ["ImageNet", "Self-Supervised", "None"]
+          },
+          "encoder_decoder": {
+            "dimensionality": ["2D Only", "3D Only", "2D+3D Dual Branch"],
+            "convolution_type": ["Standard Conv", "Sparse Conv", "Deformable Conv"],
+            "transformer_type": ["Standard Attention", "Deformable Attention", "Windowed Attention"]
+          }
+        }
+      },
+      
+      "view_representation": {
+        "definition": "Intermediate feature representation format used in the pipeline",
+        "enumeration": [
+          "Volumetric (3D Volume)",
+          "BEV (Bird's-Eye-View)",
+          "TPV (Tri-Perspective-View)",
+          "PV (Perspective-View)",
+          "Point-Based",
+          "Sparse Representation"
+        ],
+        "sub_categories": {
+          "volumetric": {
+            "coordinate_system": ["Euclidean (XYZ)", "Cylindrical"],
+            "voxel_type": ["Cubic", "Pillar", "Cylindrical"],
+            "resolution_strategy": ["Fixed", "Adaptive", "Multi-Scale"]
+          },
+          "bev": {
+            "height_encoding": ["Channel Dimension", "Explicit Z-Axis"],
+            "feature_compression": ["Vertical Pooling", "MLP Projection"]
+          },
+          "tpv": {
+            "plane_combination": ["Orthogonal Planes", "Cylindrical Planes"],
+            "fusion_method": ["Summation", "Concatenation", "Attention"]
+          }
+        }
+      },
+      
+      "view_transformation": {
+        "definition": "Method to convert features from perspective view to 3D representation",
+        "enumeration": [
+          "Projection-Based",
+          "Back-Projection-Based", 
+          "Cross-Attention-Based",
+          "Hybrid"
+        ],
+        "details": {
+          "projection": {
+            "mapping_type": ["Many-to-One", "One-to-One"],
+            "sampling": ["Bilinear Interpolation", "Nearest Neighbor"]
+          },
+          "back_projection": {
+            "depth_handling": ["Deterministic Depth", "Depth Distribution", "Learned Depth"],
+            "reference_method": ["LSS (Lift-Splat-Shoot)", "Inverse Projection"]
+          },
+          "cross_attention": {
+            "attention_type": ["Vanilla Cross-Attention", "Deformable Attention", "Sparse Attention"],
+            "query_source": ["Voxel Features", "Learned Queries"],
+            "key_value_source": ["2D Image Features", "Multi-Scale Features"]
+          }
+        }
+      },
+      
+      "information_fusion": {
+        "definition": "How multi-source information is integrated",
+        "temporal_scope": ["Spatial Only", "Temporal Only", "Spatio-Temporal"],
+        "modalities": {
+          "spatial_fusion": {
+            "camera_fusion": {
+              "method": ["Average Pooling", "Cross-Attention", "Straight-Through"],
+              "view_overlap": ["Overlapping FOV", "Non-Overlapping FOV"]
+            },
+            "multi_modal_fusion": {
+              "stage": ["Early Fusion", "Late Fusion", "Mid-Fusion"],
+              "technique": ["Concatenation", "Summation", "Cross-Attention", "Dynamic Fusion"],
+              "adaptive_mechanism": ["Learnable Weights", "Squeeze-and-Excitation", "KNN-Guided"]
+            }
+          },
+          "temporal_fusion": {
+            "alignment_method": ["Pose-Based Warping", "Flow-Based", "Attention-Based"],
+            "fusion_mechanism": ["3D Convolution", "Cross-Attention", "Adaptive Mixing", "Concatenation + Conv"],
+            "historical_frames": ["Single Previous Frame", "Multiple Frames", "Sliding Window"]
+          }
+        }
+      },
+      
+      "training_strategy": {
+        "definition": "Supervision and optimization approach",
+        "supervision_type": {
+          "enumeration": [
+            "Strong Supervision",
+            "Weak Supervision", 
+            "Semi-Supervision",
+            "Self-Supervision"
+          ],
+          "details": {
+            "strong_supervision": {
+              "label_type": ["Dense 3D Occupancy", "Semantic Voxels"],
+              "annotation_source": ["Manual", "Semi-Automated", "LiDAR Accumulation"]
+            },
+            "weak_supervision": {
+              "signal_source": ["Semantic Point Clouds", "Depth Maps", "2D Semantic Segmentation"],
+              "rendering_method": ["Volume Rendering", "Differentiable Rendering"]
+            },
+            "semi_supervision": {
+              "label_coverage": ["Partial Scene", "Sparse Voxels", "Ray-Level Labels"]
+            },
+            "self_supervision": {
+              "consistency_type": ["Photometric Consistency", "Geometric Consistency", "Cross-View Consistency"],
+              "auxiliary_task": ["Depth Estimation", "Pose Estimation", "Novel View Synthesis"]
+            }
+          }
+        },
+        "loss_functions": {
+          "geometric_losses": ["BCE (Binary Cross-Entropy)", "Scale-Invariant Log Loss", "Soft-IoU Loss"],
+          "semantic_losses": ["CE (Cross-Entropy)", "Lovasz-Softmax", "Focal Loss", "Frustum Proportion Loss", "Position Awareness Loss"],
+          "combined_losses": ["Scene-Class Affinity Loss", "Mask Classification Loss"],
+          "consistency_losses": ["Spatial Consistency", "Photometric Consistency", "Modality Alignment Loss"],
+          "distillation_losses": ["KL Divergence", "Feature Distillation"]
+        }
+      },
+      
+      "output_head": {
+        "definition": "Final prediction layer design",
+        "enumeration": [
+          "Convolutional Head",
+          "MLP Head", 
+          "Mask Decoder Head",
+          "Linear Projection Head",
+          "Threshold-based Head",
+          "Density + Semantic Dual Head"
+        ],
+        "application": {
+          "occupancy_prediction": ["Binary Classification", "Semantic Classification", "Open-Vocabulary"],
+          "geometry_output": ["Voxel Grid", "Gaussian Representation", "Implicit Function"],
+          "additional_outputs": ["Flow Prediction", "Uncertainty Estimation"]
+        }
+      },
+      
+      "temporal_modeling": {
+        "definition": "How temporal information is handled",
+        "enumeration": [
+          "None (Single Frame)",
+          "Frame-to-Frame",
+          "Sliding Window",
+          "Recurrent",
+          "Attention-Based",
+          "World Model"
+        ],
+        "motion_prediction": {
+          "has_flow_prediction": [true, false],
+          "flow_type": ["Occupancy Flow", "Scene Flow", "Instance Flow"]
+        }
+      },
+      
+      "efficiency_design": {
+        "definition": "Optimizations for computational efficiency",
+        "enumeration": [
+          "Standard",
+          "Lightweight",
+          "Sparse Computation",
+          "Binarized",
+          "Pruned"
+        ],
+        "techniques": {
+          "memory_efficiency": ["Channel-to-Height", "Sparse Convolution", "Sparse Representation"],
+          "computation_efficiency": ["2D Instead of 3D Conv", "Deformable Attention", "Tensor Decomposition"]
+        }
+      },
+      
+      "robustness_considerations": {
+        "definition": "Design choices for handling adverse conditions",
+        "enumeration": [
+          "Standard",
+          "Weather-Robust",
+          "Sensor-Failure-Robust", 
+          "Out-of-Distribution Robust"
+        ],
+        "techniques": {
+          "multi_modal_redundancy": ["Radar Backup", "Camera Redundancy"],
+          "architectural": ["Masked Reconstruction", "Coarse Projection", "Uncertainty Modeling"],
+          "training": ["Corruption Augmentation", "Knowledge Distillation from Clean Data"]
+        }
+      },
+      
+      "generalization_capability": {
+        "definition": "Ability to handle unseen scenarios",
+        "enumeration": [
+          "Closed-Set",
+          "Open-Vocabulary",
+          "Few-Shot",
+          "Zero-Shot"
+        ],
+        "approach": {
+          "pretraining": ["CLIP Integration", "LLM Integration", "Foundation Models"],
+          "training_paradigm": ["Supervised Only", "Self-Supervised Pretrain + Finetune", "Continual Learning"]
+        }
+      },
+      
+      "evaluation_metrics": {
+        "definition": "How model performance is measured",
+        "spatial_level": ["Voxel-Level", "Ray-Level", "Instance-Level"],
+        "metrics": {
+          "geometric": ["IoU (Intersection over Union)"],
+          "semantic": ["mIoU (Mean IoU)", "Per-Class IoU"],
+          "temporal": ["mAVE (Mean Absolute Velocity Error)", "OccScore"],
+          "efficiency": ["FPS", "Memory Usage", "FLOPs"]
+        },
+        "evaluation_focus": ["Geometric Only", "Semantic Only", "Semantic-Geometric Joint", "Temporal Consistency"]
+      },
+      
+      "datasets_used": {
+        "definition": "Benchmark datasets for training/evaluation",
+        "type": ["Traditional 2D/3D", "3D Occupancy Specialty", "Multi-Modal", "Large-Scale"],
+        "examples": {
+          "indoor": ["NYUv2", "SUNCG"],
+          "outdoor": ["KITTI", "SemanticKITTI", "nuScenes", "Waymo", "KITTI-360"],
+          "occupancy_specific": ["MonoScene", "Occ3D", "OpenOccupancy", "OpenScene", "SSCBench", "OCFBench", "Cam4DOcc"],
+          "synthetic": ["Virtual KITTI", "CARLA"]
+        }
+      },
+      
+      "downstream_application": {
+        "definition": "Target use case of the occupancy perception",
+        "enumeration": [
+          "Semantic Segmentation",
+          "3D Object Detection", 
+          "Dynamic Perception (Flow)",
+          "World Model Simulation",
+          "End-to-End Driving Framework",
+          "Planning & Decision Making"
+        ],
+        "integration_level": [
+          "Perception Only",
+          "Perception-Prediction",
+          "Perception-Prediction-Planning"
+        ]
+      },
+      
+      "open_source_status": {
+        "definition": "Availability of code and models",
+        "enumeration": [
+          "Full Open Source (Code + Weights)",
+          "Partial Open Source (Code Only)", 
+          "Closed Source",
+          "Research Preview"
+        ]
+      }
+    },
+    
+    "usage_prompt": "When analyzing an unfamiliar 3D occupancy algorithm, systematically evaluate it across these dimensions. Start from top-level modality, then drill down into architecture, view representation, transformation methods, fusion strategies, training approach, and finally evaluate its efficiency and robustness characteristics. This framework provides a comprehensive taxonomy to position any new method within the current research landscape.",
+    
+    "relationships": {
+      "hierarchical_dependencies": {
+        "input_modality": ["network_architecture", "view_transformation", "information_fusion"],
+        "view_representation": ["encoder_decoder", "output_head", "efficiency_design"],
+        "supervision_type": ["loss_functions", "generalization_capability"],
+        "downstream_application": ["evaluation_metrics", "temporal_modeling"]
+      },
+      "mutual_exclusivity": {
+        "view_representation": ["Volumetric", "BEV", "TPV", "PV"],
+        "supervision_type": ["Strong Supervision", "Weak Supervision", "Semi-Supervision", "Self-Supervision"]
+      },
+      "complementary_aspects": {
+        "efficiency_design": ["robustness_considerations", "network_architecture"],
+        "generalization_capability": ["training_strategy", "datasets_used"]
+      }
+    },
+    
+    "quick_reference_card": {
+      "modality_first_approach": "First identify if LiDAR/Vision/Multi-modal → determines data pipeline",
+      "view_representation_key": "Volumetric=full 3D, BEV=2D+height channels, TPV=3 orthogonal planes",
+      "transformation_rule": "Vision methods must have 2D-to-3D transform; LiDAR methods need sparse-to-dense",
+      "fusion_hierarchy": "Spatial fusion (multi-camera) → Temporal fusion (multi-frame) → Modal fusion (sensor)",
+      "supervision_signal": "Strong=3D labels, Weak=2D/3D partial labels, Self=rendering consistency"
+    }
+  }
+}
