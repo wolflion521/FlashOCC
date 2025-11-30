@@ -1,0 +1,21 @@
+## 自动驾驶3D感知技术
+
+• 多模态占用网络融合专家：精通视觉中心的占用预测架构（LSS视图转换、BEV/TPV表征）,具备FlashOCC框架实战经验,通过Channel-to-Height机制优化和CUDA加速的BEV Pooling实现197 FPS实时推理性能。
+
+• 端到端感知流程精通：深度掌握从传感器融合（Camera+LiDAR）、视图转换（投影/反投影/交叉注意力）到语义体素预测的完整pipeline,具备Ray-level mIoU评估和4D时序占用预测的工程实践能力。
+
+• 生产级效率优化专长：专注于实时自动驾驶系统的计算效率设计,包括2D/3D卷积迁移、可变形注意力机制、稀疏表征等内存优化技术,能够平衡精度-延迟trade-off以满足车端部署需求。
+
+• 研究到落地转化能力：熟练使用开源占用框架（FlashOCC/BEVFormer/TPVFormer）,具备自定义CUDA算子开发、多任务损失函数设计（交叉熵+Focal Loss+深度监督）及SemanticKITTI/nuScenes基准消融实验的代码复现能力。
+
+
+
+## 自动驾驶3D感知技术
+
+• 3D目标检测能力：精通Sparse4D稀疏查询检测框架,pointpillars等点云检测算法,深度理解端到端检测范式与4D时序建模机制,具备完整的数据采集、模型训练、车端部署经验,掌握稀疏注意力、anchor-free等前沿技术。
+
+• occupancy占用预测能力：熟练掌握FlashOCC场景级占用预测框架,深度理解BEV Pooling、Channel-to-Height加速机制,具备从2D图像到3D体素网格的完整视图转换能力。
+
+• 多传感器融合能力：深度理解LiDAR点云与视觉图像两种模态的优劣互补,熟练使用稀疏卷积、BEV/TPV表征等技术,能根据成本和性能需求灵活设计纯视觉或Camera+LiDAR融合方案。
+
+• 性能优化能力：具备从零编写CUDA算子的能力,包括Pillar特征提取、BEV池化等关键kernel,熟练使用TensorRT进行INT8量化和层融合优化,深刻理解GPU并行计算原理与内存优化策略。
