@@ -70,17 +70,19 @@ def create_voxel_visualization(points, colors, img_width=1200, img_height=800):
     vis.create_window(width=img_width, height=img_height, visible=False)
     vis.add_geometry(voxel_grid)
     
-    # 设置相机视角（车顶3.5m高度，向前俯视10度）
+    # 设置相机视角（使用原始vis_occ.py的默认参数）
     ctr = vis.get_view_control()
-    # 相机位置在车顶正上方3.5m处 (ego车在原点)
-    # 向前看（+Y方向），向下俯视10度
-    import math
-    pitch = math.radians(10)  # 俯视10度
     
-    ctr.set_lookat([0, 20, 0])          # 看向前方20m处的地面
-    ctr.set_front([0, math.cos(pitch), -math.sin(pitch)])  # 向前+向下
-    ctr.set_up([0, math.sin(pitch), math.cos(pitch)])      # 上方向
-    ctr.set_zoom(0.35)                  # 调整缩放以看到更多范围
+    # 使用与原始代码相同的视角参数
+    look_at = [-0.185, 0.513, 3.485]
+    front = [-0.974, -0.055, 0.221]
+    up = [0.221, 0.014, 0.975]
+    zoom = 0.08
+    
+    ctr.set_lookat(look_at)
+    ctr.set_front(front)
+    ctr.set_up(up)
+    ctr.set_zoom(zoom)
     
     # 设置渲染选项
     opt = vis.get_render_option()
