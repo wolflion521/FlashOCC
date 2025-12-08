@@ -5,6 +5,23 @@
 ---
 
 ## 一、BEV Pooling算法细节 (1-20)
+BEV Pooling aggregates multi-view 2D image features into a unified Bird's-Eye-View 3D representation by projecting each pixel's depth-weighted features onto a top-down grid, enabling the network to reason about the 3D scene from a single coherent perspective.
+
+**Core operation**: Converts frustum features `(cameras, height, width, depth, channels)` → BEV features `(batch, x, y, z, channels)` through geometric transformation and spatial pooling.
+
+**是的，BEV Pooling在ResNet backbone之后。**
+
+完整流程：
+```
+ResNet50 Backbone → FPN Neck → Depth Net (预测深度分布) → BEV Pooling → BEV Encoder
+```
+
+**关键点**：
+- **输入到BEV Pooling**: FPN输出的多尺度图像特征 `(B, 6_cams, C, H, W)`
+- **BEV Pooling作用**: 将2D图像特征提升到3D BEV空间
+- **输出**: BEV特征图 [(B, C, H_bev, W_bev)](file:///home/wl/下载/FlashOCC/tools/create_data_bevdet.py#L0-L149) 供后续occupancy预测使用
+
+所以BEV Pooling是**视图转换(View Transformation)**的核心模块，位于backbone特征提取和BEV空间推理之间的桥梁位置。
 
 ### Q1: BEV pooling中pillar坐标计算的完整公式
 
