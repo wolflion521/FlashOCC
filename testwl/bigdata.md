@@ -1,8 +1,770 @@
-# 📦 nuScenes 数据集组织完整指南 - FlashOCC
+# 📦 nuScenes 数据集准备完整指南 - FlashOCC
 
-> **目标**: 一次性正确解压和组织nuScenes数据集，支持Occupancy和Panoptic训练
-> **场景**: 下载了v1.0-trainval的10个blob压缩包 + 1个meta压缩包
-> **约束**: 空间有限，需要边解压边删除，不能多次重组
+> **当前状态**: ✅ 已完成 trainval 和 test 数据集解压
+> **下一步**: 下载 Occupancy GT,生成 PKL 文件,开始训练
+> **关键**: 数据必须在 `FlashOCC/data/nuscenes/`,不是 `mmdetection3d/data/`
+
+---
+
+## 📊 nuScenes 数据集枚举值速查表
+
+### 🏷️ Categories (23 类)
+
+**人类 (8)**:
+1. `human.pedestrian.adult` - 成年行人
+2. `human.pedestrian.child` - 儿童
+3. `human.pedestrian.wheelchair` - 轮椅使用者
+4. `human.pedestrian.stroller` - 婴儿车
+5. `human.pedestrian.personal_mobility` - 个人移动设备
+6. `human.pedestrian.police_officer` - 警察
+7. `human.pedestrian.construction_worker` - 建筑工人
+8. `animal` - 动物
+
+**车辆 (10)**:
+9. `vehicle.car` - 汽车 ⭐
+10. `vehicle.motorcycle` - 摩托车 ⭐
+11. `vehicle.bicycle` - 自行车 ⭐
+12. `vehicle.bus.bendy` - 铰接式公交车 → bus ⭐
+13. `vehicle.bus.rigid` - 刚性公交车 → bus ⭐
+14. `vehicle.truck` - 卡车 ⭐
+15. `vehicle.construction` - 工程车 → construction_vehicle ⭐
+16. `vehicle.emergency.ambulance` - 救护车
+17. `vehicle.emergency.police` - 警车
+18. `vehicle.trailer` - 拖车 ⭐
+
+**可移动物体 (4)**:
+19. `movable_object.barrier` - 路障 ⭐
+20. `movable_object.trafficcone` - 交通锥 ⭐
+21. `movable_object.pushable_pullable` - 可推拉物体
+22. `movable_object.debris` - 碎片
+
+**静态物体 (1)**:
+23. `static_object.bicycle_rack` - 自行车架
+
+**⭐ 标注的 10 类** 为 FlashOCC/BEVDet 检测任务使用的类别 (见 `class_names`)
+
+---
+
+### 🎯 Attributes (8 类)
+
+**车辆状态 (3)**:
+1. `vehicle.moving` - 车辆移动中
+2. `vehicle.stopped` - 车辆停止
+3. `vehicle.parked` - 车辆停泊
+
+**骑行状态 (2)**:
+4. `cycle.with_rider` - 有骑行者
+5. `cycle.without_rider` - 无骑行者
+
+**行人状态 (3)**:
+6. `pedestrian.sitting_lying_down` - 坐着或躺着
+7. `pedestrian.standing` - 站立
+8. `pedestrian.moving` - 移动中
+
+---
+
+### 👁️ Visibility (4 级)
+
+| Level | Range | Description |
+|-------|-------|-------------|
+| `v0-40` | 0-40% | 物体可见度在 0-40% 之间(严重遮挡) |
+| `v40-60` | 40-60% | 物体可见度在 40-60% 之间(中度遮挡) |
+| `v60-80` | 60-80% | 物体可见度在 60-80% 之间(轻度遮挡) |
+| `v80-100` | 80-100% | 物体可见度在 80-100% 之间(几乎完全可见) |
+
+---
+
+### 📷 Sensors (12 个)
+
+**相机 (6 个) - 360° 覆盖**:
+1. `CAM_FRONT` - 前置相机 🎯
+2. `CAM_FRONT_LEFT` - 前左相机
+3. `CAM_FRONT_RIGHT` - 前右相机
+4. `CAM_BACK` - 后置相机
+5. `CAM_BACK_LEFT` - 后左相机
+6. `CAM_BACK_RIGHT` - 后右相机
+
+**LiDAR (1 个)**:
+7. `LIDAR_TOP` - 顶置 32 线激光雷达
+
+**毫米波雷达 (5 个)**:
+8. `RADAR_FRONT` - 前置雷达
+9. `RADAR_FRONT_LEFT` - 前左雷达
+10. `RADAR_FRONT_RIGHT` - 前右雷达
+11. `RADAR_BACK_LEFT` - 后左雷达
+12. `RADAR_BACK_RIGHT` - 后右雷达
+
+**FlashOCC 使用**: 仅使用 6 个相机 (Vision-Centric)
+
+---
+
+## 📚 数据源速查表 (Data Sources Quick Reference)
+
+### 🗂️ 核心数据集
+
+| 数据集 | 用途 | 大小 | 下载链接 | 说明 |
+|--------|------|------|----------|------|
+| **nuScenes Full** | 基础数据 | ~350GB | [nuScenes Official](https://www.nuscenes.org/download) | trainval (v1.0-trainval) + test (v1.0-test) |
+| **Occupancy GT (gts)** | Occupancy训练 | ~25GB | [CVPR2023-Occ-Prediction](https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction) | 必需,所有占用率预测任务 |
+| **Occ3D-nuScenes** | Panoptic训练 | ~20GB | [Google Drive](https://drive.google.com/file/d/1kiXVNSEi3UrNERPMz_CfiJXKkgts_5dY/view?usp=drive_link) | 可选,仅Panoptic任务 |
+
+### 🎯 预训练模型
+
+| 模型 | Backbone | mIoU | 下载链接 |
+|------|----------|------|----------|
+| FlashOCC-R50 (M1) | ResNet-50 | 32.08 | [Google Drive](https://drive.google.com/file/d/1k9BzXB2nRyvXhqf7GQx3XNSej6Oq6I-B/view) |
+| FlashOCC-4D-Stereo | ResNet-50 | 37.84 | [Google Drive](https://drive.google.com/file/d/12WYaCdoZA8-A6_oh6vdLgOmqyEc3PNCe/view) |
+| FlashOCC-SwinB | Swin-Base | 43.52 | [Google Drive](https://drive.google.com/file/d/1f6E6Bm6enIJETSEbfXs57M0iOUU997kU/view) |
+| Panoptic-FlashOCC | ResNet-50 | RayPQ 16.0 | [Google Drive Folder](https://drive.google.com/drive/folders/1cgCsbXgikoP10lj6DBC7Le9C-UOCIxlN) |
+
+### 📖 关键文档
+
+| 资源 | 链接 | 说明 |
+|------|------|------|
+| FlashOCC Paper | [arXiv:2311.12058](https://arxiv.org/abs/2311.12058) | 原始论文 |
+| Panoptic-FlashOCC Paper | [arXiv:2406.10527](https://arxiv.org/abs/2406.10527) | 全景分割扩展 |
+| GitHub Repo | [Yzichen/FlashOCC](https://github.com/Yzichen/FlashOCC) | 官方代码库 |
+| nuScenes DevKit | [nuScenes GitHub](https://github.com/nutonomy/nuscenes-devkit) | 数据集工具 |
+| Occ3D Project | [Tsinghua-MARS-Lab](https://tsinghua-mars-lab.github.io/Occ3D/) | Occ3D官方页面 |
+
+**💡 提示**: 
+- nuScenes数据集需要注册账号后下载
+- gts数据集在CVPR2023仓库的README中有下载说明
+- 所有Google Drive链接可能需要科学上网
+
+---
+
+## ✅ 当前数据集状态
+
+你已经完成:
+
+```
+/home/wl/下载/data/nuscenes/  # ✅ 当前位置
+├── maps/
+├── samples/              # ✅ 包含 trainval + test
+├── sweeps/               # ✅ 包含 trainval + test  
+├── v1.0-trainval/        # ✅ Train/Val 标注
+└── v1.0-test/            # ✅ Test 标注
+```
+
+**⚠️ 重要问题**: 数据当前在 `/home/wl/下载/data/nuscenes/`,但 FlashOCC 要求在 `/home/wl/下载/FlashOCC/data/nuscenes/`
+
+---
+
+## 🎯 下一步操作清单
+
+### **Step 1: 正确组织数据文件夹位置**
+
+**关键原则**: FlashOCC 所有配置文件都硬编码了 `data_root = 'data/nuscenes/'`,意味着数据必须在:
+```
+/home/wl/下载/FlashOCC/data/nuscenes/
+```
+
+**不能是**:
+- ❌ `/home/wl/下载/data/nuscenes/`
+- ❌ `/home/wl/下载/FlashOCC/mmdetection3d/data/nuscenes/`
+- ❌ 任何其他位置
+
+#### **推荐方案: 使用软链接(节省空间)**
+
+```bash
+cd /home/wl/下载/FlashOCC
+
+# 1. 创建 data 目录
+mkdir -p data
+
+# 2. 创建软链接指向你已解压的数据
+ln -s /home/wl/下载/data/nuscenes data/nuscenes
+
+# 3. 验证软链接
+ls -lh data/
+# 应该显示:
+# lrwxrwxrwx 1 wl wl 28 Dec  8 xx:xx nuscenes -> /home/wl/下载/data/nuscenes
+
+# 4. 测试访问
+ls data/nuscenes/samples/
+ls data/nuscenes/v1.0-trainval/
+```
+
+**为什么用软链接**:
+- ✅ 节省空间(不复制 ~350GB 数据)
+- ✅ 保持原数据位置不变
+- ✅ 满足 FlashOCC 代码路径要求
+- ✅ 多个项目可共享同一数据集
+
+---
+
+### **Step 2: 下载 Occupancy GT (gts 文件夹)**
+
+**必需**: 所有 Occupancy 训练都需要 gts
+
+```bash
+# 方式1: 从 Google Drive 下载
+# 链接: https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction
+# 文件: gts.tar.gz (~20-25GB)
+
+# 假设下载到 ~/Downloads/gts.tar.gz
+cd /home/wl/下载/data/nuscenes
+tar -xzf /home/wl/下载/temp/CVPR23-Occupancy/gts.tar.gz
+
+# 验证结构
+ls gts/  # 应该看到 scene-0001, scene-0002, ...
+ls gts/scene-0001/  # 应该看到多个 token 文件夹
+ls gts/scene-0001/*/labels.npz  # 应该看到 .npz 文件
+
+# 删除压缩包释放空间
+rm ~/Downloads/gts.tar.gz
+```
+
+**最终结构**:
+```
+/home/wl/下载/data/nuscenes/
+├── maps/
+├── samples/
+├── sweeps/
+├── v1.0-trainval/
+├── v1.0-test/
+└── gts/                    # ✅ 新增
+    ├── scene-0001/
+    │   ├── <token1>/
+    │   │   └── labels.npz
+    │   └── ...
+    └── ...
+```
+
+---
+
+### **Step 3: 生成 PKL 元数据文件**
+
+**修改脚本**: 需要先修改 `tools/create_data_bevdet.py`
+
+```bash
+cd /home/wl/下载/FlashOCC
+
+# 用编辑器打开 tools/create_data_bevdet.py
+nano tools/create_data_bevdet.py
+# 或
+vim tools/create_data_bevdet.py
+```
+
+**修改 Line 139**:
+```python
+# 原代码:
+train_version = f'{version}-mini'  # 使用 mini 版本
+
+# 改为:
+train_version = f'{version}-trainval'  # 使用完整 trainval 版本
+```
+
+**运行脚本**:
+```bash
+cd /home/wl/下载/FlashOCC
+conda activate FlashOcc
+
+python tools/create_data_bevdet.py
+```
+
+**预期输出**:
+```
+Creating nuscenes infos...
+Processing train split...
+add_ann_infos
+训练样本数: 28130
+验证样本数: 6019
+测试样本数: 6008
+```
+
+**生成的文件**:
+```
+/home/wl/下载/FlashOCC/data/nuscenes/
+├── bevdetv2-nuscenes_infos_train.pkl  # ✅ ~500MB
+├── bevdetv2-nuscenes_infos_val.pkl    # ✅ ~100MB
+└── bevdetv2-nuscenes_infos_test.pkl   # ✅ ~100MB (如果有test数据)
+```
+
+---
+
+### **Step 4: 验证数据完整性**
+
+```bash
+cd /home/wl/下载/FlashOCC
+
+# 1. 检查文件夹结构
+ls -lh data/nuscenes/
+# 应该看到: maps, samples, sweeps, v1.0-trainval, v1.0-test, gts, *.pkl
+
+# 2. 检查 PKL 文件
+ls -lh data/nuscenes/*.pkl
+# 应该有 3 个 pkl 文件
+
+# 3. 验证 gts 路径正确
+python << 'EOF'
+import pickle
+import os
+
+data = pickle.load(open('data/nuscenes/bevdetv2-nuscenes_infos_train.pkl', 'rb'))
+print(f"✅ 训练样本数: {len(data['infos'])}")
+
+# 检查第一个样本
+sample = data['infos'][0]
+print(f"\n样本 token: {sample['token']}")
+print(f"Occ GT 路径: {sample['occ_path']}")
+
+# 验证路径存在
+if os.path.exists(sample['occ_path']):
+    print("✅ Occupancy GT 路径正确")
+else:
+    print(f"❌ 路径不存在: {sample['occ_path']}")
+    print("请检查 gts 文件夹位置")
+EOF
+```
+
+**预期输出**:
+```
+✅ 训练样本数: 28130
+
+样本 token: ca9a282c9e77460f8360f564131a8af5
+Occ GT 路径: ./data/nuscenes/gts/scene-0001/<token>
+✅ Occupancy GT 路径正确
+```
+
+---
+
+### **Step 5: (可选) Panoptic 数据准备**
+
+**仅在需要 Panoptic Occupancy 训练时执行**
+
+#### 5.1 下载 Occ3D 数据
+
+```bash
+# 下载链接: https://drive.google.com/file/d/1kiXVNSEi3UrNERPMz_CfiJXKkgts_5dY/view?usp=drive_link
+# 文件: occ3d.tar.gz 或 occ3d_nuscenes.zip (~15-20GB)
+# 来源: Tsinghua MARS Lab (见上方数据源速查表)
+
+cd /home/wl/下载/data/nuscenes
+tar -xzf ~/Downloads/occ3d.tar.gz
+
+# 或 unzip 如果是 zip 格式
+unzip ~/Downloads/occ3d_nuscenes.zip
+
+# 验证
+ls occ3d/
+ls occ3d/gts/
+```
+
+#### 5.2 生成 Panoptic 标注
+
+```bash
+cd /home/wl/下载/FlashOCC
+
+# 下载生成脚本 (如果项目中没有)
+wget https://raw.githubusercontent.com/MCG-NJU/SparseOcc/main/gen_instance_info.py
+
+# 运行生成
+python gen_instance_info.py \
+    --data-root ./data/nuscenes \
+    --occ3d-root ./data/nuscenes/occ3d
+
+# 验证生成结果
+ls data/nuscenes/occ3d_panoptic/
+```
+
+---
+
+## 🧠 Panoptic Occupancy 训练知识速查
+
+### 📚 核心概念理解
+
+#### **1. 什么是 Panoptic Occupancy?**
+
+| 任务类型 | 输出 | 示例 | 适用场景 |
+|----------|------|------|----------|
+| **Semantic Occupancy** | 每个体素有类别标签 | Voxel[x,y,z] = "car" | 场景理解 |
+| **Instance Occupancy** | 每个体素有实例 ID | Voxel[x,y,z] = car_5 | 目标跟踪 |
+| **Panoptic Occupancy** ⭐ | 类别 + 实例 ID | Voxel[x,y,z] = ("car", id=5) | 完整场景认知 |
+
+**关键区别**:
+- **Things** (可数物体): 车辆、行人、自行车 → 需要实例分割
+- **Stuff** (背景): 道路、天空、建筑 → 只需语义分割
+- **Panoptic** = Things (实例分割) + Stuff (语义分割)
+
+---
+
+#### **2. Panoptic-FlashOCC 相比普通 FlashOCC 的改进**
+
+根据 README.md 第 64-68 行:
+
+| 改进项 | 原因 | 影响 |
+|---------|------|------|
+| ① **不使用 Camera Mask** | Camera mask 提升可见区性能但牺牲不可见区 | 更好的隐藏区域预测 |
+| ② **Category Balancing** | 解决类别不均衡(car 多, pedestrian 少) | 小目标检测提升 |
+| ③ **更强 Loss 设置** | 更好的收敛特性 | 更高 mIoU |
+| ④ **Instance Center** ⭐ | 通过中心点预测实例 | Panoptic 核心创新 |
+
+**性能提升**:
+- 普通 FlashOCC: mIoU **15.41**
+- Panoptic-FlashOCC: mIoU **31.57** + RayPQ **16.0**
+
+---
+
+#### **3. 评价指标详解**
+
+| 指标 | 全称 | 计算方式 | 意义 |
+|------|------|----------|------|
+| **mIoU** | Mean Intersection over Union | ∑(TP/(TP+FP+FN)) / N_classes | 语义分割质量 |
+| **RayIoU** | Ray Intersection over Union | 沿相机射线计算 IoU | 占用率预测精度 |
+| **RayPQ** | Ray Panoptic Quality | RQ × SQ (识别 + 分割) | Panoptic 整体质量 |
+
+**RayPQ 组成**:
+- **RQ** (Recognition Quality): 实例识别准确率
+- **SQ** (Segmentation Quality): 实例分割质量
+
+---
+
+### 🚀 Panoptic 训练实践指南
+
+#### **4. 模型选择建议**
+
+| 需求 | 推荐配置 | Backbone | mIoU/RayPQ | FPS | 显存 |
+|------|----------|----------|------------|-----|------|
+| **快速验证** | panoptic-flashocc-r50-depth-tiny | ResNet-50 | 29.14 / - | 39.8 | ~10GB |
+| **均衡性能** | panoptic-flashocc-r50-depth4d-pano | ResNet-50 | 30.31 / 14.5 | 30.4 | ~12GB |
+| **高精度** | panoptic-flashocc-r50-depth4d-longterm8f | ResNet-50 | 31.57 / 16.0 | 30.2 | ~14GB |
+
+**配置文件路径**: `projects/configs/panoptic-flashocc/panoptic-flashocc-*.py`
+
+---
+
+#### **5. 训练命令示例**
+
+```bash
+cd /home/wl/下载/FlashOCC
+conda activate FlashOcc
+
+# 方式1: 单卡训练 (推荐入门)
+bash tools/dist_train.sh \
+    projects/configs/panoptic-flashocc/panoptic-flashocc-r50-depth-tiny.py \
+    1 \
+    --work-dir work_dirs/panoptic_tiny
+
+# 方式2: 4D + Panoptic (更高精度)
+bash tools/dist_train.sh \
+    projects/configs/panoptic-flashocc/panoptic-flashocc-r50-depth4d-pano.py \
+    1 \
+    --work-dir work_dirs/panoptic_4d
+
+# 方式3: 长时序 (8帧, 最高精度)
+bash tools/dist_train.sh \
+    projects/configs/panoptic-flashocc/panoptic-flashocc-r50-depth4d-longterm8f.py \
+    1 \
+    --work-dir work_dirs/panoptic_longterm
+```
+
+---
+
+#### **6. 性能预期与调优**
+
+**预期性能下降** (正常现象):
+- Panoptic 比纯 Occupancy mIoU 低 **7-8 点**
+- 原因:
+  1. 多任务学习权衡 (Semantic + Instance)
+  2. 点云范围减小 (40.0m vs 51.2m)
+  3. Loss 函数不同 (FocalLoss vs CrossEntropy)
+  4. Pretrain mismatch
+  5. 训练 epoch 不足
+
+**调优建议**:
+```python
+# 在配置文件中调整:
+
+# 1. 增加训练 epoch
+runner = dict(max_epochs=50)  # 默认 24
+
+# 2. 调整学习率
+optimizer = dict(lr=2e-4)  # 默认 1e-4
+
+# 3. 调整 batch size
+data = dict(samples_per_gpu=4)  # 根据显存
+
+# 4. Loss 权重
+model = dict(
+    occ_head=dict(
+        loss_occ=dict(loss_weight=2.0)  # 默认 1.0
+    )
+)
+```
+
+---
+
+### 📊 学习资源推荐
+
+#### **快速入门 (2-3 小时)**
+
+1. **基础概念** (30min)
+   - [Semantic vs Instance vs Panoptic - PyImageSearch](https://pyimagesearch.com/2022/06/29/semantic-vs-instance-vs-panoptic-segmentation/)
+   - 重点: 理解 Things vs Stuff
+
+2. **视觉化教程** (20min)
+   - [NVIDIA DRIVE Labs - 3D Occupancy](https://www.youtube.com/watch?v=KEn8oklzyvo)
+   - 重点: VoxFormer, FB-OCC 方法
+
+3. **论文阅读** (1.5 hour)
+   - [SparseOcc Paper](https://arxiv.org/html/2312.17118v2) - 第一个 Panoptic Occupancy Benchmark
+   - [Panoptic-FlashOCC Paper](https://arxiv.org/abs/2406.10527) - 本项目原始论文
+
+#### **进阶学习**
+
+4. **统一表示** (1 hour)
+   - [PanoOcc CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/papers/Wang_PanoOcc_Unified_Occupancy_Representation_for_Camera-based_3D_Panoptic_Segmentation_CVPR_2024_paper.pdf)
+   - 重点: Voxel-level 表示方法
+
+5. **综述论文** (2 hours)
+   - [Panoptic Perception Survey](https://arxiv.org/html/2408.15388v1)
+   - 重点: 整体架构和未来方向
+
+---
+
+### ⚠️ 常见错误与解决
+
+#### **错误 1: occ3d_panoptic 路径错误**
+```python
+# 错误信息
+FileNotFoundError: data/nuscenes/occ3d_panoptic/gts/scene-XXX
+
+# 解决
+# 检查是否正确生成 panoptic 标注
+ls data/nuscenes/occ3d_panoptic/
+python gen_instance_info.py --data-root ./data/nuscenes --occ3d-root ./data/nuscenes/occ3d
+```
+
+#### **错误 2: Instance Center 预测全为零**
+```python
+# 原因: Pretrain 模型不匹配
+# 解决: 使用 Panoptic 专用 pretrain
+model = dict(
+    pretrained='ckpts/panoptic-flashocc-pretrain.pth'
+)
+```
+
+#### **错误 3: RayPQ 指标未计算**
+```python
+# 需要在评估时开启 panoptic 模式
+bash tools/dist_test.sh \
+    projects/configs/panoptic-flashocc/panoptic-flashocc-r50-depth4d-pano.py \
+    work_dirs/panoptic_4d/latest.pth \
+    1 \
+    --eval panoptic  # 添加 --eval panoptic
+```
+
+---
+
+### 🎯 关键总结
+
+| 项目 | Semantic Occ | Panoptic Occ |
+|------|--------------|-------------|
+| **输出** | 类别标签 | 类别 + 实例 ID |
+| **优势** | 计算快 | 实例区分 |
+| **适用** | 场景理解 | 跟踪 + 预测 |
+| **数据** | gts | gts + occ3d_panoptic |
+| **训练时间** | 1x | 1.3-1.5x |
+| **性能** | mIoU 32+ | mIoU 31+ + RayPQ 16+ |
+
+**选择建议**:
+- 只需场景理解 → 用 **Semantic Occupancy**
+- 需要目标跟踪/行为预测 → 用 **Panoptic Occupancy**
+
+---
+
+## ✅ 最终数据结构检查
+
+完成所有步骤后,你应该有以下结构:
+
+```
+/home/wl/下载/FlashOCC/
+└── data/                              # 软链接方式
+    └── nuscenes -> /home/wl/下载/data/nuscenes
+
+/home/wl/下载/data/nuscenes/          # 实际数据位置
+├── maps/                              # ✅ 地图数据
+├── samples/                           # ✅ 关键帧 (trainval + test)
+│   ├── CAM_FRONT/
+│   ├── CAM_BACK/
+│   ├── LIDAR_TOP/
+│   └── ...
+├── sweeps/                            # ✅ 中间帧 (trainval + test)
+│   ├── CAM_FRONT/
+│   ├── LIDAR_TOP/
+│   └── ...
+├── v1.0-trainval/                     # ✅ Train/Val 标注 (13 个 JSON)
+│   ├── sample.json
+│   ├── scene.json
+│   └── ...
+├── v1.0-test/                         # ✅ Test 标注 (13 个 JSON)
+├── gts/                               # ✅ Occupancy GT
+│   ├── scene-0001/
+│   └── ...
+├── occ3d/                             # ⚠️ 仅 Panoptic 需要
+├── occ3d_panoptic/                    # ⚠️ 仅 Panoptic 需要
+├── bevdetv2-nuscenes_infos_train.pkl  # ✅ ~500MB
+├── bevdetv2-nuscenes_infos_val.pkl    # ✅ ~100MB
+└── bevdetv2-nuscenes_infos_test.pkl   # ✅ ~100MB
+```
+
+---
+
+## 🚀 开始训练
+
+数据准备完成后,可以开始训练:
+
+### 快速测试 (推荐)
+
+```bash
+cd /home/wl/下载/FlashOCC
+conda activate FlashOcc
+
+# 使用轻量级配置测试 1 epoch
+bash tools/dist_train.sh \
+    projects/configs/flashocc/flashocc-r50-M0.py \
+    1 \
+    --work-dir work_dirs/test_occ \
+    --cfg-options runner.max_epochs=1 data.samples_per_gpu=1
+```
+
+### 完整训练
+
+```bash
+# 单卡训练 (RTX 4080 16GB)
+bash tools/dist_train.sh \
+    projects/configs/flashocc/flashocc-r50.py \
+    1 \
+    --work-dir work_dirs/flashocc_r50
+
+# 多卡训练 (如果有)
+bash tools/dist_train.sh \
+    projects/configs/flashocc/flashocc-r50.py \
+    4 \
+    --work-dir work_dirs/flashocc_r50
+```
+
+---
+
+## 🛠️ 常见问题
+
+### Q1: 为什么数据必须在 `FlashOCC/data/nuscenes/`?
+
+**A**: 所有配置文件都硬编码了:
+```python
+data_root = 'data/nuscenes/'  # 相对于 FlashOCC 项目根目录
+```
+
+如果数据在其他位置,需要修改所有配置文件的 `data_root`,非常麻烦。
+
+### Q2: 软链接和直接移动数据有什么区别?
+
+**软链接方式** (推荐):
+```bash
+ln -s /home/wl/下载/data/nuscenes /home/wl/下载/FlashOCC/data/nuscenes
+```
+- ✅ 不占用额外空间
+- ✅ 数据保持原位置
+- ✅ 多个项目可共享
+
+**直接移动方式**:
+```bash
+mv /home/wl/下载/data/nuscenes /home/wl/下载/FlashOCC/data/
+```
+- ❌ 数据只能一个项目使用
+- ✅ 不依赖软链接
+
+### Q3: create_data_bevdet.py 报错找不到 gts?
+
+**原因**: gts 文件夹位置不对或未下载
+
+**解决**:
+```bash
+# 检查 gts 是否存在
+ls /home/wl/下载/data/nuscenes/gts/
+
+# 检查场景命名
+ls /home/wl/下载/data/nuscenes/gts/ | head -5
+# 必须是 scene-0001, scene-0002 格式
+
+# 检查软链接是否正确
+ls -lh /home/wl/下载/FlashOCC/data/nuscenes/gts/
+```
+
+### Q4: 训练时报错 "FileNotFoundError"?
+
+**检查清单**:
+```bash
+# 1. 软链接是否有效
+readlink -f /home/wl/下载/FlashOCC/data/nuscenes
+
+# 2. PKL 文件是否存在
+ls /home/wl/下载/FlashOCC/data/nuscenes/*.pkl
+
+# 3. 当前工作目录
+pwd  # 必须是 /home/wl/下载/FlashOCC
+
+# 4. 测试相对路径访问
+ls data/nuscenes/samples/
+```
+
+---
+
+## 📝 完整操作流程总结
+
+```bash
+# ========== 当前状态 ==========
+# ✅ trainval 和 test 数据已解压到 /home/wl/下载/data/nuscenes/
+
+# ========== Step 1: 创建软链接 ==========
+cd /home/wl/下载/FlashOCC
+mkdir -p data
+ln -s /home/wl/下载/data/nuscenes data/nuscenes
+ls -lh data/  # 验证
+
+# ========== Step 2: 下载并解压 gts ==========
+cd /home/wl/下载/data/nuscenes
+# 下载 gts.tar.gz 到 ~/Downloads/
+tar -xzf ~/Downloads/gts.tar.gz
+ls gts/  # 验证
+
+# ========== Step 3: 修改并运行数据生成脚本 ==========
+cd /home/wl/下载/FlashOCC
+# 修改 tools/create_data_bevdet.py Line 139:
+# train_version = f'{version}-trainval'
+conda activate FlashOcc
+python tools/create_data_bevdet.py
+
+# ========== Step 4: 验证数据 ==========
+ls -lh data/nuscenes/*.pkl
+python -c "import pickle; data=pickle.load(open('data/nuscenes/bevdetv2-nuscenes_infos_train.pkl','rb')); print(f'训练样本: {len(data[\"infos\"])}')"
+
+# ========== Step 5: 测试训练 ==========
+bash tools/dist_train.sh \
+    projects/configs/flashocc/flashocc-r50-M0.py \
+    1 \
+    --work-dir work_dirs/test \
+    --cfg-options runner.max_epochs=1 data.samples_per_gpu=1
+
+# ========== 完成! ==========
+```
+
+**预计耗时**: 1-2 小时 (主要是下载 gts)
+
+**存储需求**: 
+- 当前已用: ~350GB (trainval + test)
+- 需要新增: ~25GB (gts)
+- 总计: ~375GB
+
+---
+
+## 🔗 相关资源
+
+- **Occupancy GT 下载**: [CVPR2023-3D-Occupancy-Prediction](https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction)
+- **Occ3D Panoptic**: [Occ3D 项目](https://tsinghua-mars-lab.github.io/Occ3D/)
+- **FlashOCC 官方文档**: `doc/install.md`
 
 ---
 

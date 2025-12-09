@@ -137,6 +137,7 @@ if __name__ == '__main__':
     dataset = 'nuscenes'
     version = 'v1.0'
     train_version = f'{version}-mini'  # 使用 mini 版本
+    train_version = f'{version}-trainval'  # 使用完整 trainval 版本
     root_path = 'data/nuscenes'
     extra_tag = 'bevdetv2-nuscenes'
     nuscenes_data_prep(
