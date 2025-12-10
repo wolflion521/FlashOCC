@@ -11,7 +11,7 @@ from mmdet3d.core import bbox3d2result
 import numpy as np
 from multiprocessing.dummy import Pool as ThreadPool
 from ...ops import nearest_assign
-# pool = ThreadPool(processes=4)  # ´´½¨Ïß³Ì³Ø
+# pool = ThreadPool(processes=4)  # åˆ›å»ºçº¿ç¨‹æ± 
 
 # for pano
 grid_config_occ = {
@@ -995,8 +995,10 @@ class BEVStereo4DOCC(BEVStereo4D):
             occ_preds: List[(Dx, Dy, Dz), (Dx, Dy, Dz), ...]
         """
         outs = self.occ_head(img_feats)
-        # occ_preds = self.occ_head.get_occ(outs, img_metas)      # List[(Dx, Dy, Dz), (Dx, Dy, Dz), ...]
-        occ_preds = self.occ_head.get_occ_gpu(outs, img_metas)      # List[(Dx, Dy, Dz), (Dx, Dy, Dz), ...]
+        if not hasattr(self.occ_head, "get_occ_gpu"):
+            occ_preds = self.occ_head.get_occ(outs, img_metas)      # List[(Dx, Dy, Dz), (Dx, Dy, Dz), ...]
+        else:
+            occ_preds = self.occ_head.get_occ_gpu(outs, img_metas)      # List[(Dx, Dy, Dz), (Dx, Dy, Dz), ...]
         return occ_preds
 
     def forward_dummy(self,
@@ -1387,7 +1389,7 @@ class BEVDepthPanoTRT(BEVDepthPano):
         
         # outs_inst_center = self.aux_centerness_head([occ_bev_feature])
         x = self.aux_centerness_head.shared_conv(occ_bev_feature)     # (B, C'=share_conv_channel, H, W)
-        # ÔËĞĞ²»Í¬task_head,
+        # è¿è¡Œä¸åŒtask_head,
         outs_inst_center_reg = self.aux_centerness_head.task_heads[0].reg(x)
         outs.append(outs_inst_center_reg)
         outs_inst_center_height = self.aux_centerness_head.task_heads[0].height(x)
@@ -1440,7 +1442,7 @@ class BEVDepthPanoTRT(BEVDepthPano):
 
         # outs_inst_center = self.aux_centerness_head([occ_bev_feature])
         x = self.aux_centerness_head.shared_conv(occ_bev_feature)     # (B, C'=share_conv_channel, H, W)
-        # ÔËĞĞ²»Í¬task_head,
+        # è¿è¡Œä¸åŒtask_head,
         outs_inst_center_reg = self.aux_centerness_head.task_heads[0].reg(x)
         outs.append(outs_inst_center_reg)
         outs_inst_center_height = self.aux_centerness_head.task_heads[0].height(x)
