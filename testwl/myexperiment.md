@@ -19,7 +19,7 @@ This guide provides a **complete step-by-step reproduction** of FlashOCC for dem
 
 ---
 
-## ✅ Phase 1: Environment Setup (2-4 hours)
+## ✅ Phase 1: Environment Setup (2-4 hours)　目前状态已经完成
 
 ### Step 1.1: Create Conda Environment
 
@@ -237,26 +237,116 @@ data/nuscenes/
 cd /home/wl/下载/data/nuscenes
 
 # Download from CVPR2023-3D-Occupancy-Prediction
-# Link: https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction
-# Download 'gts.tar.gz' (~2GB)
+# Repository: https://github.com/CVPR2023-3D-Occupancy-Prediction/CVPR2023-3D-Occupancy-Prediction
 
-wget <link_to_gts.tar.gz>
-tar -xzf gts.tar.gz
+# Option 1: Download via OpenDataLab (Recommended, faster)
+# Install CLI: pip install openxlab
+# Download trainval: openxlab dataset download --dataset-repo OpenDataLab/Occupancy3D-nuScenes-V1.0 --source-path /trainval/gts
+
+# Option 2: Download from Google Drive
+# Link (trainval): https://drive.google.com/drive/folders/1U1T61mydwgMCre58AV-l8L8QExle-Y0g
+# Download the 'gts' folder from trainval (~32GB)
+
+# Option 3: Download from Baidu Cloud
+# Link: https://pan.baidu.com/share/init?surl=jP5fDnMB3xhNKAUSde_cuQ (password: senseocc)
+
+# After download, extract to data/nuscenes/gts/
+# The final structure should be:
+# data/nuscenes/gts/
+# ├── scene-0001/
+# │   ├── <frame_token>/
+# │   │   └── labels.npz  # Contains: semantics, mask_lidar, mask_camera
+# │   └── ...
+# └── ...
 ```
 
-**For Panoptic Occupancy**:
+**For Panoptic Occupancy** (Optional - Only needed for Panoptic-FlashOCC training):
 ```bash
+# IMPORTANT: Skip this section if you only want to test/train Vanilla FlashOCC!
+# Panoptic data is ONLY needed for training Panoptic-FlashOCC models.
+
 # Download Occ3D-nuScenes from Google Drive
 # Link: https://drive.google.com/file/d/1kiXVNSEi3UrNERPMz_CfiJXKkgts_5dY/view?usp=drive_link
+# File name: occ3d-nuscenes.tar.gz (~20GB)
+# Note: This may show Google's "can't scan for viruses" warning - this is NORMAL for large files
 
-# Download to data/nuscenes/
-gdown <gdrive_link>
-unzip occ3d.zip
+cd /home/wl/下载/data/nuscenes
 
-# Generate panoptic GT
+# Download using gdown
+gdown 1kiXVNSEi3UrNERPMz_CfiJXKkgts_5dY
+
+# Extract (file may be named gts.tar.gz or occ3d-nuscenes.tar.gz)
+tar -xzf gts.tar.gz  # or occ3d-nuscenes.tar.gz
+# This creates: data/nuscenes/occ3d/
+
+# Verify extraction
+ls occ3d/gts/  # Should show scene-xxxx folders
+
+# Download gen_instance_info.py script (from SparseOcc project)
 cd /home/wl/下载/FlashOCC
-python tools/gen_instance_info.py
+wget https://raw.githubusercontent.com/MCG-NJU/SparseOcc/main/gen_instance_info.py
+# Or if GitHub is slow, use mirror:
+# wget https://ghproxy.com/https://raw.githubusercontent.com/MCG-NJU/SparseOcc/main/gen_instance_info.py
+
+# IMPORTANT: Before running gen_instance_info.py, you MUST have the sweep info files
+# These files can be obtained in two ways:
+
+# Option 1 (Recommended): Download pre-generated sweep info files from SparseOcc
+cd /home/wl/下载/data/nuscenes
+# Download from Google Drive: https://drive.google.com/file/d/1Gp_f3kJQNPTDhII6DEsfPG43xIZL3Nmb/view?usp=sharing。　这个链接　Sorry, unable to open the file at this time.　Please check the address and try again.
+
+# This zip contains: nuscenes_infos_train_sweep.pkl, nuscenes_infos_val_sweep.pkl, nuscenes_infos_test_sweep.pkl
+gdown 1Gp_f3kJQNPTDhII6DEsfPG43xIZL3Nmb
+unzip nuscenes_infos_sweep.zip  # or the actual filename after download
+
+# Option 2: Generate sweep info files yourself (if you prefer)
+# IMPORTANT: This requires base .pkl files first!
+# Step 2a: Generate base nuscenes info files using mmdetection3d
+cd /home/wl/下载/FlashOCC
+python tools/create_data_bevdet.py nuscenes \
+    --root-path ./data/nuscenes \
+    --out-dir ./data/nuscenes \
+    --extra-tag nuscenes
+# This creates: nuscenes_infos_train.pkl, nuscenes_infos_val.pkl, nuscenes_infos_test.pkl
+cd mmdetection3d/
+python tools/create_data.py nuscenes \
+    --root-path ./data/nuscenes \
+    --out-dir ./data/nuscenes \
+    --extra-tag nuscenes
+
+# Step 2b: Download gen_sweep_info.py from SparseOcc
+wget https://raw.githubusercontent.com/MCG-NJU/SparseOcc/main/gen_sweep_info.py
+
+# Step 2c: Run gen_sweep_info.py to add sweep information
+python gen_sweep_info.py --data-root ./data/nuscenes
+# This will generate: nuscenes_infos_train_sweep.pkl, nuscenes_infos_val_sweep.pkl, nuscenes_infos_test_sweep.pkl
+
+# After sweep info files are ready, generate panoptic occupancy ground truth
+cd /home/wl/下载/FlashOCC
+python gen_instance_info.py \
+    --nusc-root ./data/nuscenes \
+    --occ3d-root ./data/nuscenes/occ3d
+# This creates: data/nuscenes/occ3d_panoptic/
+# Expected time: 10-30 minutes
+
+# Verify panoptic GT generation
+ls data/nuscenes/occ3d_panoptic/gts/  # Should show scene folders with panoptic labels
 ```
+
+**Important Notes for Panoptic Data**:
+1. **When to use**: Only for training Panoptic-FlashOCC models (models with `-pano` suffix)
+2. **File structure after gen_instance_info.py**:
+   ```
+   data/nuscenes/occ3d_panoptic/
+   └── gts/
+       ├── scene-0001/
+       │   ├── <token>/
+       │   │   └── labels.npz  # Contains: semantics + instances
+       └── ...
+   ```
+3. **Difference from vanilla FlashOCC**:
+   - Vanilla: Uses `gts/` (semantic only)
+   - Panoptic: Uses `occ3d_panoptic/` (semantic + instance IDs)
 
 **✓ Checkpoint**: Directory structure:
 ```
@@ -265,6 +355,31 @@ data/nuscenes/
 ├── occ3d/                  # Original Occ3D
 └── occ3d_panoptic/        # Panoptic version (after gen_instance_info.py)
 ```
+
+**Important Notes**:
+
+1. **gts/ vs occ3d/ difference**:
+   - `gts/`: From CVPR2023 challenge, **only semantic labels** (no instance IDs)
+   - `occ3d/`: From Occ3D dataset, **semantic + instance labels** (for panoptic tasks)
+   - For vanilla FlashOCC: Only need `gts/`
+   - For Panoptic-FlashOCC: Need `occ3d/` → generate `occ3d_panoptic/`
+
+2. **Download sizes**:
+   - mini: ~440MB
+   - trainval (gts): ~32GB  
+   - occ3d-nuscenes: ~20GB
+
+3. **File structure in labels.npz**:
+   ```python
+   # gts/scene-xxxx/<token>/labels.npz contains:
+   labels = np.load('labels.npz')
+   semantics = labels['semantics']      # (200, 200, 16) - semantic class IDs
+   mask_lidar = labels['mask_lidar']    # (200, 200, 16) - observed in LiDAR
+   mask_camera = labels['mask_camera']  # (200, 200, 16) - observed in camera
+   
+   # occ3d/ additionally contains:
+   instances = labels['instances']      # (200, 200, 16) - instance IDs
+   ```
 
 ---
 
@@ -333,7 +448,7 @@ Results:
 **Expected time**: 30-60 minutes (depends on GPU)
 
 **✓ Checkpoint**: mIoU should be around **32.08** for M1 model
-
+** 我的测试结果 **: mIOU = 29.08. 因为我这个环境的cuda的配置和原版的不一样，所以对于有一个算子我这使用了cpu版本，导致的误差。具体的结果见　testwl/myres.md　结果１
 ---
 
 ### Step 3.3: Run Model Inference (Multi-GPU)
@@ -385,6 +500,84 @@ bash tools/dist_test.sh \
 
 ---
 
+### Step 3.6: Test Panoptic-FlashOCC (Optional)
+
+**Prerequisites**:
+- ✅ Panoptic checkpoint downloaded or trained
+- ✅ Panoptic data prepared (`occ3d_panoptic/`)
+
+**Download Panoptic Checkpoints**:
+```bash
+cd /home/wl/下载/FlashOCC/ckpts
+
+# Download from Google Drive (folder with multiple models)
+# Link: https://drive.google.com/drive/folders/1cgCsbXgikoP10lj6DBC7Le9C-UOCIxlN
+
+# Or download specific models using gdown:
+# Note: You need to get the file ID for each model from the folder
+```
+
+**Test Commands**:
+```bash
+cd /home/wl/下载/FlashOCC
+conda activate FlashOcc
+
+# Choose your model
+exp_name=panoptic-flashocc-r50-depth-tiny-pano
+exp_name=panoptic-flashocc-r50-depth-pano
+exp_name=panoptic-flashocc-r50-depth4d-pano
+exp_name=panoptic-flashocc-r50-depth4d-longterm8f-pano
+
+# Test with RayIoU metric (for semantic occupancy)
+bash tools/dist_test.sh \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    work_dirs/${exp_name}/epoch_24_ema.pth \
+    4 \
+    --eval ray-iou
+
+# Test with Panoptic metrics (RayPQ)
+# Note: This requires additional processing
+bash tools/dist_test.sh \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    work_dirs/${exp_name}/epoch_24_ema.pth \
+    4 \
+    --eval ray-iou  # Will output both RayIoU and RayPQ
+```
+
+**Expected Output**:
+```
+# For panoptic-flashocc-r50-depth-tiny-pano:
+mIoU: 34.81
+RayIoU: 34.82
+RayPQ: 12.89  # Panoptic Quality metric
+RayPQ@1: 0.088
+RayPQ@2: 0.134
+RayPQ@4: 0.165
+```
+
+**Key Metrics Explained**:
+- **mIoU**: Mean Intersection over Union (semantic accuracy)
+- **RayIoU**: Ray-based IoU (considers depth/distance)
+- **RayPQ**: Ray-based Panoptic Quality (combines semantic + instance)
+  - RayPQ = RaySQ × RayRQ
+  - RaySQ: Segmentation Quality
+  - RayRQ: Recognition Quality
+
+**Performance Expectations**:
+
+| Model | mIoU | RayIoU | RayPQ | Notes |
+|-------|------|--------|-------|-------|
+| Vanilla FlashOCC | 32.08 | 38.43 | N/A | Semantic only |
+| Panoptic-Tiny | 34.81 | 34.82 | 12.89 | Fastest |
+| Panoptic-Standard | 35.22 | 35.42 | 13.18 | Recommended |
+| Panoptic-4D | 36.76 | 37.68 | 14.52 | 2 frames |
+| Panoptic-8F | 38.50 | 39.73 | 15.96 | Best |
+
+**Note**: Panoptic models have slightly lower pure occupancy mIoU (~3%) than Vanilla due to multi-task trade-off,
+but they additionally provide instance segmentation capability.
+
+---
+
 ## 🎨 Phase 4: Visualization (1-2 hours)
 
 ### Step 4.1: Visualize Occupancy Results
@@ -422,9 +615,112 @@ python tools/analysis_tools/vis_occ_video.py \
 
 ---
 
+### Step 4.3: Visualize Panoptic-FlashOCC Results (Optional)
+
+**For Single-Frame Panoptic Models**:
+```bash
+cd /home/wl/下载/FlashOCC
+
+# Choose your model
+exp_name=panoptic-flashocc-r50-depth-tiny-pano
+exp_name=panoptic-flashocc-r50-depth-pano
+
+# Visualize with ground truth
+python tools/vis_occ.py \
+    --config projects/configs/panoptic-flashocc/${exp_name}.py \
+    --weights work_dirs/${exp_name}/epoch_24_ema.pth \
+    --viz-dir vis/${exp_name} \
+    --draw-gt
+
+# Visualize with panoptic ground truth (shows instance IDs)
+python tools/vis_occ.py \
+    --config projects/configs/panoptic-flashocc/${exp_name}.py \
+    --weights work_dirs/${exp_name}/epoch_24_ema.pth \
+    --viz-dir vis/${exp_name}_pano \
+    --draw-pano-gt  # Shows instance segmentation
+```
+
+**For Multi-Frame Panoptic Models (4D)**:
+```bash
+exp_name=panoptic-flashocc-r50-depth4d-pano
+exp_name=panoptic-flashocc-r50-depth4d-longterm8f-pano
+
+python tools/vis_occ.py \
+    --config projects/configs/panoptic-flashocc/${exp_name}.py \
+    --weights work_dirs/${exp_name}/epoch_24_ema.pth \
+    --viz-dir vis/${exp_name} \
+    --draw-pano-gt
+```
+
+**Visualization Output**:
+- **Semantic view**: Shows 18 occupancy classes (same as vanilla)
+- **Panoptic view**: Shows semantic classes + instance boundaries
+  - Different instances of same class shown in different colors
+  - e.g., Car #1 (red), Car #2 (blue), Car #3 (green)
+
+**What to look for in Panoptic visualizations**:
+1. **Instance separation**: Same-class objects get different IDs
+2. **Temporal consistency**: Instance IDs should be consistent across frames (for 4D models)
+3. **Boundary quality**: Clear separation between different instances
+4. **Centerness**: Instance centers should align with object centers
+
+---
+
+### Step 4.4: Benchmark Inference Speed (Optional)
+
+**For Vanilla FlashOCC**:
+```bash
+python tools/analysis_tools/benchmark.py \
+    projects/configs/flashocc/flashocc-r50.py \
+    ckpts/flashocc-r50-256x704.pth
+```
+
+**For Panoptic-FlashOCC (Single-Frame)**:
+```bash
+exp_name=panoptic-flashocc-r50-depth-tiny-pano
+exp_name=panoptic-flashocc-r50-depth-pano
+
+# Benchmark occupancy only
+python tools/analysis_tools/benchmark.py \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    work_dirs/${exp_name}/epoch_24_ema.pth
+
+# Benchmark with panoptic processing
+python tools/analysis_tools/benchmark.py \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    work_dirs/${exp_name}/epoch_24_ema.pth \
+    --w_pano --w_panoproc
+```
+
+**For Panoptic-FlashOCC (Multi-Frame)**:
+```bash
+exp_name=panoptic-flashocc-r50-depth4d-pano
+exp_name=panoptic-flashocc-r50-depth4d-longterm8f-pano
+
+# Use sequential benchmark for temporal models
+python tools/analysis_tools/benchmark_sequential.py \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    work_dirs/${exp_name}/epoch_24_ema.pth \
+    --w_pano --w_panoproc
+```
+
+**Expected FPS (RTX 3090)**:
+
+| Model | Occupancy Only | With Panoptic | Difference |
+|-------|----------------|---------------|------------|
+| Vanilla FlashOCC | ~40 FPS | N/A | - |
+| Panoptic-Tiny | ~44 FPS | ~40 FPS | -10% |
+| Panoptic-Standard | ~39 FPS | ~35 FPS | -10% |
+| Panoptic-4D | ~30 FPS | ~27 FPS | -10% |
+| Panoptic-8F | ~30 FPS | ~27 FPS | -10% |
+
+**Note**: Panoptic processing adds ~10% overhead for instance segmentation post-processing.
+
+---
+
 ## 🏋️ Phase 5: Model Training (Optional, 8-24 hours)
 
-### Step 5.1: Train from Scratch (Single GPU)
+### Step 5.1: Train Vanilla FlashOCC from Scratch (Single GPU)
 
 ```bash
 cd /home/wl/下载/FlashOCC
@@ -439,7 +735,7 @@ python tools/train.py \
 
 ---
 
-### Step 5.2: Train from Scratch (Multi-GPU)
+### Step 5.2: Train Vanilla FlashOCC from Scratch (Multi-GPU)
 
 ```bash
 # Train with 4 GPUs (recommended)
@@ -459,14 +755,114 @@ tensorboard --logdir work_dirs/flashocc_r50_train
 
 ---
 
-### Step 5.3: Resume Training (if interrupted)
+### Step 5.3: Train Panoptic-FlashOCC (Multi-GPU)
+
+**Prerequisites**:
+- ✅ Occ3D data downloaded (`data/nuscenes/occ3d/`)
+- ✅ Panoptic GT generated (`data/nuscenes/occ3d_panoptic/`)
+- ✅ BEVDet pretrained checkpoint (optional but recommended)
+
+**Available Panoptic Models**:
+
+| Model | Config | Frames | mIoU | RayPQ | Training Time |
+|-------|--------|--------|------|-------|---------------|
+| **Panoptic-FlashOCC-Tiny** | `panoptic-flashocc-r50-depth-tiny-pano.py` | 1 | 34.81 | 12.9 | ~6 hours (4 GPUs) |
+| **Panoptic-FlashOCC** | `panoptic-flashocc-r50-depth-pano.py` | 1 | 35.22 | 13.2 | ~8 hours (4 GPUs) |
+| **Panoptic-FlashOCC-4D** | `panoptic-flashocc-r50-depth4d-pano.py` | 2 | 36.76 | 14.5 | ~10 hours (4 GPUs) |
+| **Panoptic-FlashOCC-8F** | `panoptic-flashocc-r50-depth4d-longterm8f-pano.py` | 8 | 38.50 | 16.0 | ~14 hours (4 GPUs) |
+
+**Training Commands**:
 
 ```bash
+cd /home/wl/下载/FlashOCC
+conda activate FlashOcc
+
+# Choose one of the following models:
+
+# 1. Tiny model (fastest training, smallest model)
+exp_name=panoptic-flashocc-r50-depth-tiny-pano
+
+# 2. Standard model (recommended for interview demo)
+exp_name=panoptic-flashocc-r50-depth-pano
+
+# 3. 4D model (2 frames, better temporal modeling)
+exp_name=panoptic-flashocc-r50-depth4d-pano
+
+# 4. 8-frame long-term model (best performance)
+exp_name=panoptic-flashocc-r50-depth4d-longterm8f-pano
+
+# Train with 4 GPUs
+bash tools/dist_train.sh \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    4
+```
+
+**Training Configuration Details**:
+```python
+# From panoptic-flashocc-r50-depth-tiny-pano.py
+model = dict(
+    type='BEVDepthPano',          # Panoptic model
+    occ_head=dict(
+        type='BEVOCCHead2D_V2',
+        num_classes=18,
+        class_balance=True,       # Uses class balancing
+        loss_occ=dict(
+            type='CustomFocalLoss', # Different from Vanilla (CrossEntropyLoss)
+            use_sigmoid=True,
+            loss_weight=1.0
+        ),
+    ),
+    aux_centerness_head=dict(   # Additional head for panoptic
+        type='Centerness_Head',
+        # ... instance center prediction
+    ),
+)
+
+# Training settings
+optimizer = dict(type='AdamW', lr=1e-4, weight_decay=1e-2)
+runner = dict(type='EpochBasedRunner', max_epochs=24)
+load_from = "ckpts/bevdet-r50-4d-depth-cbgs.pth"  # Pretrained BEVDet
+
+# Data augmentation
+bda_aug_conf = dict(
+    rot_lim=(-0., 0.),
+    scale_lim=(1., 1.),
+    flip_dx_ratio=0.5,
+    flip_dy_ratio=0.5
+)
+```
+
+**Expected Outputs**:
+- Checkpoint files: `work_dirs/${exp_name}/epoch_*.pth`
+- EMA checkpoint: `work_dirs/${exp_name}/epoch_24_ema.pth` (use this for testing)
+- Training logs: `work_dirs/${exp_name}/tf_logs/`
+- Config backup: `work_dirs/${exp_name}/*.py`
+
+**Key Differences from Vanilla FlashOCC**:
+1. **Loss function**: `CustomFocalLoss` (vs `CrossEntropyLoss`)
+2. **Class balancing**: Enabled (`class_balance=True`)
+3. **Additional head**: `Centerness_Head` for instance prediction
+4. **Data**: Uses `occ3d_panoptic/` (vs `gts/`)
+5. **Metrics**: RayPQ (Panoptic Quality) in addition to mIoU
+
+---
+
+### Step 5.4: Resume Training (if interrupted)
+
+```bash
+# For Vanilla FlashOCC
 bash tools/dist_train.sh \
     projects/configs/flashocc/flashocc-r50.py \
     4 \
     --work-dir work_dirs/flashocc_r50_train \
     --resume-from work_dirs/flashocc_r50_train/latest.pth
+
+# For Panoptic-FlashOCC
+exp_name=panoptic-flashocc-r50-depth-pano
+bash tools/dist_train.sh \
+    projects/configs/panoptic-flashocc/${exp_name}.py \
+    4 \
+    --resume-from work_dirs/${exp_name}/latest.pth
 ```
 
 ---
