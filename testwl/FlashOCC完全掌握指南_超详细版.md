@@ -3062,7 +3062,35 @@ bin_size = (60 - 1) / 80 = 0.7375m
 
 ---
 
-## 2.6.2 BEVStereo4D: 立体视觉原理 (⏱️ 35分钟)
+## 2.6.2 BEVDepth4D核心函数流程图
+
+```python
+# 完整流程:
+
+forward_train()
+    |
+    ├──> extract_feat(img_inputs)  # 继承自BEVDet4D
+    |       |
+    |       ├──> extract_img_feat() 
+    |       |       ├──> prepare_inputs() 
+    |       |       ├──> prepare_bev_feat() 
+    |       |       |       ├──> image_encoder()
+    |       |       |       └──> img_view_transformer() 
+    |       |       |               └──> depth_net() → depth预测
+    |       |       └──> bev_encoder()
+    |       └──> 返回 img_feats, pts_feats, depth ✓
+    |
+    ├──> get_depth_loss(gt_depth, depth)  # ✨新增!
+    |       |
+    |       └──> 计算深度监督损失
+    |
+    └──> forward_pts_train()
+            └──> 计算任务损失
+```
+
+---
+
+## 2.6.3 BEVStereo4D: 立体视觉原理 (⏱️ 35分钟)
 
 **文件**: `bevstereo4d.py`  
 **类**: `BEVStereo4D`  
