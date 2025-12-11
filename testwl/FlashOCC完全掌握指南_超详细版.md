@@ -2059,19 +2059,23 @@ y (下)
 
 ```
 名称: ego_coord
-原点: 车辆中心(通常在后轴中点)
+原点: 车辆质心/几何中心 (通常位于车辆后轴中心上方)
 单位: 米 (meter)
 维度: 3D (x, y, z)
 
 坐标轴定义(右手坐标系):
-      ↑ x (车辆前进方向)
+      ↑ z (车辆上方,天空方向)
       |
-      |
-   <--+----
-  y   |车辆| (左为正)
-      +----
-      |
-      ↓ z (向下为正)
+      |    ↗ x (车辆前进方向)
+      |  ↗
+      |↗
+   y<-+---- (车辆中心)
+  (左为正)
+
+说明:
+- x轴: 指向车辆前方
+- y轴: 指向车辆左侧(从车后向前看)
+- z轴: 指向车辆上方(向上为正,符合右手坐标系)
 ```
 
 **数学关系**: 相机坐标 → 车辆坐标(刚体变换)
@@ -2092,6 +2096,11 @@ y (下)
 **Lyric导师说**:
 > 这个变换描述了相机相对于车辆的位置和朝向。  
 > 6个相机有6个不同的T矩阵!
+> 
+> **重要**: ego坐标系的轴向定义与global坐标系完全一致:  
+> - 都是右手坐标系  
+> - x、y、z轴方向相同  
+> - 唯一区别: 原点位置不同(ego原点随车辆移动)
 
 #### 🌍 坐标系4: 全局坐标系 (Global Coordinate)
 
@@ -2101,13 +2110,20 @@ y (下)
 单位: 米 (meter)
 维度: 3D (x, y, z)
 
-坐标轴定义:
-      ↑ x (东)
+NuScenes官方坐标系定义 (ENU - East-North-Up):
+      ↑ z (上方,天空)
       |
-      |
-  y <-+ (北)
-      |
-      ↓ z (向下)
+      |    ↗ x (东 East)
+      |  ↗
+      |↗
+   y<-+---- (原点)
+  (北 North)
+
+说明:
+- x轴: 东(East)方向
+- y轴: 北(North)方向  
+- z轴: 上(Up)方向,向天空为正
+- 与ego坐标系方向一致,只是原点随车身移动
 ```
 
 **数学关系**: 车辆坐标 → 全局坐标(车辆位姿)
@@ -2260,22 +2276,32 @@ y = 0.4·200 + (-40) = 40米  # ← 右前角
 # 完整变换链
 curr_feat = inv(feat2bev) @ inv(curr_s2k) @ prev_s2k @ feat2bev @ prev_feat
 
-# 简化为
-curr_feat = inv(feat2bev) @ (curr_s2k @ inv(prev_s2k)) @ feat2bev @ prev_feat
-                  ↑                    ↑                        ↑
-              米→网格          从历史ego到当前ego          网格→米
+# 符号重组(利用矩阵乘法的结合律):
+# 设 T = inv(curr_s2k) @ prev_s2k  (这是从历史ego到当前ego的变换)
+# 则:
+curr_feat = inv(feat2bev) @ T @ feat2bev @ prev_feat
+                  ↑         ↑         ↑
+              米→网格   车辆运动   网格→米
 
-# 再简化 (代码中的形式)
+# 代码中命名 T 为 keyego2adjego:
+keyego2adjego = inv(curr_s2k) @ prev_s2k
 curr_feat = inv(feat2bev) @ keyego2adjego @ feat2bev @ prev_feat
 ```
 
 **Lyric导师说**:
 > ⚠️ 这个公式就是`gen_grid()`的核心!
 > 
+> **重要澄清**:
+> 这里的"简化"实际上只是**符号重命名**和**公式重组**!  
+> 并未使用复杂的矩阵恒等式,只用了:
+> 1. **结合律**: 矩阵乘法可以重新分组
+> 2. **命名**: 把 `inv(curr_s2k) @ prev_s2k` 这个整体命名为 `keyego2adjego`
+> 
 > **关键点**:
 > 1. `feat2bev` 和 `inv(feat2bev)` 像三明治一样**夹住变换**
-> 2. 中间的`keyego2adjego`描述**车辆运动**
+> 2. 中间的`keyego2adjego`描述**车辆运动** (从历史ego到当前ego)
 > 3. 整个变换是**可微的**,可以反向传播梯度!
+> 4. 保持乘法顺序不变,没有左右交换!
 > 
 > 接下来,我们看代码是怎么实现这个数学公式的!
 
@@ -2311,9 +2337,15 @@ feat2bev = [[vx    0   x_min]    # vx: x方向网格间隔(m/grid)
             [0     0     1  ]]   # x_min, y_min: BEV起点
 ```
 
-2. **keyego2adjego**: 当前帧ego → 历史帧ego (车辆运动)
+2. **keyego2adjego**: 从历史帧ego到当前帧ego的变换 (车辆运动)
 ```python
+# 注意方向: 这是从历史帧ego变换到当前帧keyego!
+# keyego2adjego = inv(curr_sensor2keyego) @ prev_sensor2keyego
+# 但由于sensor2keyego已经是ego→keyego的变换,实际代码:
 keyego2adjego = curr_sensor2keyego @ inv(prev_sensor2keyego)
+
+# 物理含义: 描述车辆从历史时刻到当前时刻的运动
+# 包括平移(位置变化)和旋转(朝向变化)
 ```
 
 3. **tf (最终变换)**: 组合所有变换
@@ -7101,4 +7133,538 @@ checkpoint_config = dict(
 - C2H机制 ✅
 - LSS变换 ✅
 - 深度预测 ✅
+
+
+
+---
+
+# 第2.14章: 代码实现细节深度补充 🔍
+
+**⏱️ 建议学习时间: 50分钟**  
+**难度: ⭐⭐⭐⭐⭐
+
+**Lyric导师说**:
+> 我仔细review了前面的章节和实际代码,发现有些地方写得不够具体清晰。  
+> 现在我要把这些**容易误解**的细节全部讲透,配上真实代码和数值示例!
+
+---
+
+## 2.14.1 voxel_pooling_prepare_v2的完整数据流 (⏱️ 20分钟)
+
+### 🎯 这个函数在做什么?
+
+**文件**: `view_transformer.py` 行278-346
+
+**核心任务**: 将3D空间点映射到BEV voxel,并为CUDA pooling准备索引数组
+
+**Lyric导师说**:
+> 这个函数看起来很复杂,但实际上就是在做**点云到voxel的映射**!  
+> 我用具体数值带你过一遍,保证看懂!
+
+### 📊 输入输出详解
+
+```python
+def voxel_pooling_prepare_v2(self, coor):
+    """
+    Args:
+        coor: (B, N, D, fH, fW, 3) - 3D空间坐标(x, y, z),单位:米
+              例如: (2, 6, 41, 16, 22, 3)
+              含义: 2个batch, 6个相机, 41个深度层, 16×22的特征图
+              每个点有(x,y,z)坐标
+              
+    Returns:
+        ranks_bev: (N_points,) - 每个点属于哪个BEV voxel
+                   值范围: [0, B*Dx*Dy*Dz-1]
+                   例如: tensor([0, 0, 15, 15, 15, 128, ...])
+                   
+        ranks_depth: (N_points,) - 点在depth tensor中的原始索引
+                     值范围: [0, B*N*D*fH*fW-1]
+                     例如: tensor([0, 5, 12, 18, ...])
+                     
+        ranks_feat: (N_points,) - 点在feat tensor中的索引  
+                    值范围: [0, B*N*fH*fW-1]
+                    例如: tensor([0, 0, 1, 1, 2, ...])
+                    
+        interval_starts: (N_pillar,) - 每个voxel在排序后数组中的起始位置
+                        例如: tensor([0, 3, 8, 15, ...])
+                        
+        interval_lengths: (N_pillar,) - 每个voxel包含多少个点
+                         例如: tensor([3, 5, 7, 10, ...])
+    """
+```
+
+### 🔢 逐步数值示例
+
+**步骤1: 将3D坐标转换为voxel索引**
+
+```python
+# 输入示例 (简化为1个batch, 1个相机, 2个深度):
+B, N, D, H, W = 1, 1, 2, 2, 2
+coor = torch.tensor([
+    [[[[[−50.0, −50.0, 0.5],   # 点0: (x, y, z)
+        [−50.0, −49.0, 0.5]],  # 点1
+       [[−49.0, −50.0, 0.5],   # 点2
+        [−49.0, −49.0, 0.5]]], # 点3
+      
+      [[[−50.0, −50.0, 1.5],   # 点4: 更深的深度
+        [−50.0, −49.0, 1.5]],  # 点5
+       [[−49.0, −50.0, 1.5],   # 点6
+        [−49.0, −49.0, 1.5]]]]]]) # 点7
+
+# 假设配置:
+# grid_lower_bound = [-51.2, -51.2, -5.0]  # BEV起点(米)
+# grid_interval = [0.512, 0.512, 0.4]      # 每个voxel大小(米)
+# grid_size = [200, 200, 16]               # voxel数量(Dx, Dy, Dz)
+
+# 转换公式: voxel_idx = (coord - lower_bound) / interval
+# 点0: x_voxel = (−50.0 - (−51.2)) / 0.512 = 1.2 / 0.512 ≈ 2
+#      y_voxel = (−50.0 - (−51.2)) / 0.512 = 1.2 / 0.512 ≈ 2  
+#      z_voxel = (0.5 - (−5.0)) / 0.4 = 5.5 / 0.4 ≈ 13
+
+# 代码中的实现:
+coor = ((coor - self.grid_lower_bound.to(coor)) /
+        self.grid_interval.to(coor))
+# 结果: coor = [[[[[2, 2, 13], [2, 3, 13]], 
+#                  [[3, 2, 13], [3, 3, 13]]],
+#                [[[2, 2, 16], [2, 3, 16]],  # z=16超出范围!
+#                 [[3, 2, 16], [3, 3, 16]]]]]
+coor = coor.long()  # 取整
+```
+
+**步骤2: 添加batch索引**
+
+```python
+# coor: (8, 3) - flatten后的voxel索引
+# 添加batch维度:
+batch_idx = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0]).view(8, 1)
+coor = torch.cat((coor, batch_idx), 1)
+# 结果: (8, 4) 最后一维: (x_voxel, y_voxel, z_voxel, batch_id)
+# [[2, 2, 13, 0],
+#  [2, 3, 13, 0],
+#  [3, 2, 13, 0],
+#  [3, 3, 13, 0],
+#  [2, 2, 16, 0],  # 会被过滤掉
+#  [2, 3, 16, 0],  # 会被过滤掉
+#  [3, 2, 16, 0],  # 会被过滤掉
+#  [3, 3, 16, 0]]  # 会被过滤掉
+```
+
+**步骤3: 过滤超出范围的点**
+
+```python
+# grid_size = [200, 200, 16] (Dx, Dy, Dz)
+kept = (coor[:, 0] >= 0) & (coor[:, 0] < 200) &        (coor[:, 1] >= 0) & (coor[:, 1] < 200) &        (coor[:, 2] >= 0) & (coor[:, 2] < 16)
+
+# kept = [True, True, True, True, False, False, False, False]
+# 只保留前4个点!
+
+coor = coor[kept]  # (4, 4)
+# [[2, 2, 13, 0],
+#  [2, 3, 13, 0],
+#  [3, 2, 13, 0],
+#  [3, 3, 13, 0]]
+```
+
+**步骤4: 计算ranks_bev (全局voxel索引)**
+
+```python
+# ranks_bev公式: 
+# batch_id * (Dz * Dy * Dx) + z * (Dy * Dx) + y * Dx + x
+# 这样可以把4D索引(batch, x, y, z)映射到1D!
+
+# 点0: 0 * (16*200*200) + 13 * (200*200) + 2 * 200 + 2 
+#     = 0 + 520000 + 400 + 2 = 520402
+ranks_bev = coor[:, 3] * (16 * 200 * 200)
+ranks_bev += coor[:, 2] * (200 * 200)
+ranks_bev += coor[:, 1] * 200
+ranks_bev += coor[:, 0]
+
+# ranks_bev = [520402, 520602, 520412, 520612]
+```
+
+**步骤5: 排序和分组**
+
+```python
+# 按ranks_bev排序,让同一个voxel的点聚在一起
+order = ranks_bev.argsort()
+# order = [0, 2, 1, 3] (已经基本有序)
+
+ranks_bev = ranks_bev[order]
+# ranks_bev = [520402, 520412, 520602, 520612]
+
+# 找出每个unique voxel的起始位置
+kept = torch.ones(4, dtype=torch.bool)
+kept[1:] = ranks_bev[1:] != ranks_bev[:-1]
+# kept = [True, True, True, True] (每个都是不同voxel)
+
+interval_starts = torch.where(kept)[0]
+# interval_starts = [0, 1, 2, 3]
+
+interval_lengths = torch.zeros_like(interval_starts)
+interval_lengths[:-1] = interval_starts[1:] - interval_starts[:-1]
+interval_lengths[-1] = 4 - interval_starts[-1]
+# interval_lengths = [1, 1, 1, 1] (每个voxel 1个点)
+```
+
+### 🎯 最终结果的物理意义
+
+```python
+# 假设有这样的映射:
+# ranks_bev:     [520402, 520412, 520602, 520612]
+# ranks_depth:   [0,      2,      1,      3     ]
+# ranks_feat:    [0,      1,      0,      1     ]
+# interval_starts: [0,    1,      2,      3     ]
+# interval_lengths:[1,    1,      1,      1     ]
+
+# 物理意义:
+# - Voxel 520402有1个点(从位置0开始),来自depth[0],feat[0]
+# - Voxel 520412有1个点(从位置1开始),来自depth[2],feat[1]
+# - Voxel 520602有1个点(从位置2开始),来自depth[1],feat[0]
+# - Voxel 520612有1个点(从位置3开始),来自depth[3],feat[1]
+
+# CUDA kernel会用这些索引来聚合:
+# for each voxel:
+#     start = interval_starts[voxel_id]
+#     length = interval_lengths[voxel_id]
+#     for i in range(start, start+length):
+#         bev_feat[voxel_id] += depth[ranks_depth[i]] * feat[ranks_feat[i]]
+```
+
+### ⚠️ 常见误区
+
+**误区1**: 认为ranks_depth和ranks_feat是一样的
+
+```python
+# 错误!它们是不同的!
+# ranks_depth索引: (B*N*D*fH*fW,) - 包含深度维度
+# ranks_feat索引:  (B*N*fH*fW,) - 不包含深度维度!
+
+# 例如:
+# depth.shape = (2, 6, 41, 16, 22) = (B, N, D, fH, fW)
+# feat.shape = (2, 6, 16, 22, 64) = (B, N, fH, fW, C)
+
+# ranks_depth的点5可能对应depth的第41个深度层
+# 但ranks_feat的点5对应的是同一个像素位置,没有深度维度!
+```
+
+**误区2**: 不理解为什么要排序
+
+```python
+# 为什么要按ranks_bev排序?
+# 原因: CUDA kernel需要知道哪些点属于同一个voxel!
+
+# 排序前: ranks_bev = [1000, 5, 1000, 5, 1000]
+#         同一个voxel的点分散在各处,难以处理
+
+# 排序后: ranks_bev = [5, 5, 1000, 1000, 1000]
+#         同一个voxel的点连续存储!
+#         voxel 5: 位置0-1
+#         voxel 1000: 位置2-4
+```
+
+---
+
+## 2.14.2 BEVOCCHead2D的reshape细节 (⏱️ 15分钟)
+
+### 🔄 forward()中的维度变换
+
+**代码**: `bev_occ_head.py` 行204-220
+
+```python
+def forward(self, img_feats):
+    # 输入: img_feats (B, C, Dy, Dx) = (2, 256, 200, 200)
+    
+    # 步骤1: 2D卷积
+    occ_pred = self.final_conv(img_feats)  
+    # 输出: (B, 256, 200, 200) - 维持shape不变
+    
+    # 步骤2: permute - 关键变换!
+    occ_pred = occ_pred.permute(0, 3, 2, 1)
+    # (B, C, Dy, Dx) → (B, Dx, Dy, C)
+    # (2, 256, 200, 200) → (2, 200, 200, 256)
+    
+    bs, Dx, Dy = occ_pred.shape[:3]  # bs=2, Dx=200, Dy=200
+    
+    if self.use_predicter:
+        # 步骤3: MLP预测
+        occ_pred = self.predicter(occ_pred)
+        # 输入: (2, 200, 200, 256)
+        # Linear(256 → 512) + Softplus + Linear(512 → 18*16=288)
+        # 输出: (2, 200, 200, 288)
+        
+        # 步骤4: reshape到3D!
+        occ_pred = occ_pred.view(bs, Dx, Dy, self.Dz, self.num_classes)
+        # (2, 200, 200, 288) → (2, 200, 200, 16, 18)
+        #                         ↑   ↑    ↑    ↑   ↑
+        #                        batch Dx  Dy   Dz  cls
+    
+    return occ_pred  # (B, Dx, Dy, Dz, num_classes)
+```
+
+### 🎯 为什么这样设计?
+
+**Lyric导师说**:
+> 这个设计非常巧妙!让我解释每一步的动机:
+
+**1. 为什么permute(0, 3, 2, 1)?**
+
+```python
+# 原因: Linear layer在最后一个维度操作!
+
+# 如果不permute:
+# input: (B, C, Dy, Dx) = (2, 256, 200, 200)
+# Linear会在Dx维度操作 - 这不是我们想要的!
+
+# permute后:
+# input: (B, Dx, Dy, C) = (2, 200, 200, 256)
+# Linear在C维度操作 - 正确! ✓
+# 每个空间位置(Dx, Dy)的256维特征独立通过MLP
+```
+
+**2. 为什么输出是288维 (18*16)?**
+
+```python
+# 目标: (Dx, Dy) → (Dx, Dy, Dz, num_classes)
+# 从2D → 3D,需要预测Dz个高度层!
+
+# 方法1: 用3D卷积 (BEVOCCHead3D的做法)
+# - 优点: 直接输出3D
+# - 缺点: 慢,显存大
+
+# 方法2: 用2D卷积+reshape (BEVOCCHead2D的做法)
+# - 2D特征 → 预测Dz*num_classes个值
+# - reshape成(Dz, num_classes)
+# - 优点: 快,省显存
+# - 缺点: 缺少3D上下文
+
+# 具体: 每个(x, y)位置预测:
+# [class0_z0, class1_z0, ..., class17_z0,   # 第0层的18个类别
+#  class0_z1, class1_z1, ..., class17_z1,   # 第1层的18个类别
+#  ...
+#  class0_z15, class1_z15, ..., class17_z15] # 第15层的18个类别
+# 总共: 16 * 18 = 288个值
+```
+
+**3. reshape的具体过程**
+
+```python
+# 输入: (B, Dx, Dy, 288)
+# 目标: (B, Dx, Dy, 16, 18)
+
+# reshape如何知道正确的组织方式?
+# 答案: 按照连续内存顺序!
+
+# 假设某位置的288个值:
+# [v0, v1, v2, ..., v287]
+
+# view(bs, Dx, Dy, 16, 18)后:
+# [:, :, :, 0, :] = [v0, v1, ..., v17]    # z=0层的18个类别
+# [:, :, :, 1, :] = [v18, v19, ..., v35]  # z=1层的18个类别
+# ...
+# [:, :, :, 15, :] = [v270, ..., v287]    # z=15层的18个类别
+
+# 这意味着MLP的输出顺序是:
+# [z0_c0, z0_c1, ..., z0_c17, z1_c0, z1_c1, ..., z15_c17]
+```
+
+### 📊 完整数值示例
+
+```python
+# 假设一个简化版本: Dx=Dy=2, Dz=2, num_classes=3
+
+# 输入特征:
+img_feats = torch.randn(1, 256, 2, 2)  # (B, C, Dy, Dx)
+
+# 经过final_conv:
+occ_pred = torch.randn(1, 256, 2, 2)
+
+# permute:
+occ_pred = occ_pred.permute(0, 3, 2, 1)  # (1, 2, 2, 256)
+
+# 经过predicter (Linear 256→6):
+occ_pred = torch.randn(1, 2, 2, 6)  # Dz*num_classes=2*3=6
+
+# 假设值:
+# occ_pred[0, 0, 0, :] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+# reshape:
+occ_pred = occ_pred.view(1, 2, 2, 2, 3)  # (B, Dx, Dy, Dz, C)
+
+# 结果:
+# occ_pred[0, 0, 0, 0, :] = [1.0, 2.0, 3.0]  # (x=0,y=0,z=0)的3个类别
+# occ_pred[0, 0, 0, 1, :] = [4.0, 5.0, 6.0]  # (x=0,y=0,z=1)的3个类别
+```
+
+### ⚠️ 调试技巧
+
+```python
+# 验证reshape是否正确:
+def verify_reshape():
+    # 创建测试数据
+    B, Dx, Dy, Dz, C = 1, 2, 2, 2, 3
+    flat = torch.arange(Dz * C).float()  # [0, 1, 2, 3, 4, 5]
+    
+    # 模拟MLP输出
+    occ_flat = flat.view(1, 1, 1, Dz * C).expand(B, Dx, Dy, Dz * C)
+    
+    # reshape
+    occ_3d = occ_flat.view(B, Dx, Dy, Dz, C)
+    
+    # 验证
+    print("Position (0,0,0):")
+    print(f"  z=0: {occ_3d[0, 0, 0, 0, :]}")  # 应该是[0, 1, 2]
+    print(f"  z=1: {occ_3d[0, 0, 0, 1, :]}")  # 应该是[3, 4, 5]
+    
+    assert torch.allclose(occ_3d[0, 0, 0, 0, :], torch.tensor([0., 1., 2.]))
+    assert torch.allclose(occ_3d[0, 0, 0, 1, :], torch.tensor([3., 4., 5.]))
+    print("✓ Reshape正确!")
+
+verify_reshape()
+```
+
+---
+
+## 2.14.3 class_balance权重计算详解 (⏱️ 15分钟)
+
+### 📊 nuScenes类别分布极度不均衡
+
+**代码**: `bev_occ_head.py` 行12-31
+
+```python
+# nuScenes的18类占据标签频率统计:
+nusc_class_frequencies = np.array([
+    944004,      # 类别0: barrier (护栏)
+    1897170,     # 类别1: bicycle
+    152386,      # 类别2: bus
+    2391677,     # 类别3: car ⭐ 第2常见
+    16957802,    # 类别4: construction_vehicle
+    724139,      # 类别5: motorcycle
+    189027,      # 类别6: pedestrian
+    2074468,     # 类别7: traffic_cone
+    413451,      # 类别8: trailer
+    2384460,     # 类别9: truck
+    5916653,     # 类别10: driveable_surface
+    175883646,   # 类别11: other_flat
+    4275424,     # 类别12: sidewalk
+    51393615,    # 类别13: terrain
+    61411620,    # 类别14: manmade
+    105975596,   # 类别15: vegetation
+    116424404,   # 类别16: empty ⭐ 最常见!
+    1892500630   # 类别17: free (背景) ⭐⭐⭐ 超级常见!
+])
+```
+
+**问题严重性**:
+```python
+# 最常见类别 vs 最稀有类别:
+max_freq = 1892500630  # free (类别17)
+min_freq = 152386      # bus (类别2)
+ratio = max_freq / min_freq = 12,418倍!
+
+# 如果不加权:
+# - 模型会倾向于预测"free"
+# - 稀有类别(bus, barrier)几乎学不到
+# - mIoU会很低!
+```
+
+### 🔢 权重计算公式
+
+```python
+# 代码:
+class_weights = torch.from_numpy(
+    1 / np.log(nusc_class_frequencies[:num_classes] + 0.001)
+)
+
+# 为什么用log?
+# 1. 直接用1/freq,权重差异太大
+# 2. log可以压缩动态范围
+# 3. +0.001防止log(0)
+
+# 具体计算:
+# 类别2 (bus): weight = 1 / log(152386 + 0.001) 
+#                      = 1 / 11.93 ≈ 0.084
+
+# 类别17 (free): weight = 1 / log(1892500630 + 0.001)
+#                        = 1 / 21.36 ≈ 0.047
+
+# 权重比: 0.084 / 0.047 ≈ 1.79倍
+# (相比原始频率的12,418倍,已经大幅缩小!)
+```
+
+### 📈 实际应用
+
+```python
+# 在loss计算中使用:
+def loss(self, occ_pred, voxel_semantics, mask_camera):
+    if self.class_balance:
+        # 方法1: 加权样本数 (BEVOCCHead2D)
+        valid_voxels = voxel_semantics[mask_camera.bool()]
+        num_total_samples = 0
+        for i in range(self.num_classes):
+            # 计算每个类别的加权样本数
+            count_i = (valid_voxels == i).sum()
+            num_total_samples += count_i * self.cls_weights[i]
+        
+        # loss计算时除以加权样本数
+        loss_occ = self.loss_occ(
+            preds, voxel_semantics, mask_camera,
+            avg_factor=num_total_samples  # 不是简单的sum!
+        )
+        
+        # 方法2: 直接用weight参数 (BEVOCCHead2D_V2)
+        loss_occ = self.loss_occ(
+            preds, voxel_semantics,
+            weight=self.cls_weights  # CrossEntropyLoss会自动应用
+        )
+```
+
+### 🎯 效果对比
+
+```python
+# 不使用class_balance:
+# mIoU: ~25%
+# 问题: bus/barrier的IoU接近0%
+
+# 使用class_balance:
+# mIoU: ~32%
+# 改善: 所有类别都能学到,稀有类别IoU提升明显
+
+# 数值示例:
+# 假设有1000个voxel:
+# - 900个是"free" (类别17)
+# - 100个是"bus" (类别2)
+
+# 不加权:
+# loss ≈ 0.9 * loss_free + 0.1 * loss_bus
+# 模型倾向于优化loss_free,忽略loss_bus
+
+# 加权 (weight_free=0.047, weight_bus=0.084):
+# weighted_loss ≈ 0.9*0.047*loss_free + 0.1*0.084*loss_bus
+#               ≈ 0.042*loss_free + 0.008*loss_bus
+# 虽然bus样本少,但权重大,两者接近平衡!
+```
+
+---
+
+## 2.14.4 总结:文档改进对照表 ⏱️ (5分钟)
+
+| 之前写得不清楚的地方 | 现在补充的细节 |
+|-------------------|---------------|
+| voxel_pooling_prepare_v2只有概念 | 完整数值示例,每步都有具体数字 |
+| ranks_bev/ranks_depth/ranks_feat区别模糊 | 明确说明索引范围和物理意义 |
+| BEVOCCHead2D的reshape没讲清楚 | 详细解释permute→MLP→reshape的每一步 |
+| 为什么输出288维 (18*16) | 解释Channel-to-Height的具体编码方式 |
+| class_balance只说了公式 | 数值计算+频率对比+效果分析 |
+| interval_starts/lengths的作用 | 用CUDA kernel伪代码说明用途 |
+
+**Lyric导师说**:
+> 🎉 看完这一章,你应该能:
+> 1. 手算voxel_pooling的完整流程
+> 2. 解释BEVOCCHead2D每一步的维度变化
+> 3. 理解class_balance如何平衡类别
+> 4. 调试相关代码时知道看哪些中间结果
+>
+> 如果还有不清楚的,回到具体小节重新看!
+
+---
 
