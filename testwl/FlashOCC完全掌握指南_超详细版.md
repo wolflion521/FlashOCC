@@ -2154,30 +2154,113 @@ NuScenes官方坐标系定义 (ENU - East-North-Up):
 - 这是BEVDet4D的核心参考系!
 ```
 
-**数学关系**: 历史帧ego → 当前帧keyego
+**数学关系**: 不同帧的ego坐标系之间的转换
 
 ```python
-# 计算sensor2keyego
-# 步骤1: 当前帧ego坐标 → 全局坐标
-keyego2global = ego2globals[0, 0]  # 取当前帧第一个相机
+# ⚠️ 重要澄清: sensor2keyego 与 BEV特征对齐的关系
 
-# 步骤2: 全局坐标 → 关键帧ego坐标
-global2keyego = inv(keyego2global)
+# sensor2keyego 主要用于:
+# 1. 将相机图像特征从sensor坐标转换到keyego坐标
+# 2. 计算不同帧ego坐标系之间的相对运动
 
-# 步骤3: sensor → ego → global → keyego
+# 计算当前帧的keyego坐标系:
+# 步骤1: 选择当前帧第一个相机的ego2global作为参考
+keyego2global = ego2globals[0, 0]  # (4, 4) 当前帧ego→全局坐标
+
+# 步骤2: 计算全局坐标→keyego的逆变换
+global2keyego = inv(keyego2global)  # (4, 4)
+
+# 步骤3: 计算任意相机sensor到keyego的完整变换
+# 这个变换链是: sensor → ego → global → keyego
 sensor2keyego = global2keyego @ ego2global @ sensor2ego
+
+# ⭐ 关键理解:
+# - sensor2keyego 用于从相机图像生成BEV特征时的坐标变换
+# - 但BEV特征本身已经在ego坐标系下了!
+# - 对齐历史帧BEV时,用的是 ego坐标系之间的变换,不是sensor坐标!
 ```
 
 **Lyric导师说**:
-> ⭐ 这是理解时序对齐的关键!
+> ⚠️ **容易混淆的地方**!  
 > 
-> **为什么要用keyego而不是global?**
+> `sensor2keyego` 这个名字容易让人误解。让我澄清:
+> 
+> **用途1: 生成BEV特征时** (在LSS view transformer中)
+> - 相机图像在sensor坐标系下
+> - 需要 sensor→ego→global→keyego 的变换
+> - 这时用 `sensor2keyego` 矩阵
+> 
+> **用途2: 对齐历史帧BEV时** (在gen_grid中)
+> - BEV特征已经在ego坐标系下了!
+> - 只需要 历史ego→keyego→当前ego 的变换
+> - 这时从 `sensor2keyego` **提取ego之间的变换**:
+>   ```python
+>   # 从sensor2keyego推导出ego之间的变换:
+>   keyego2adjego = curr_sensor2keyego @ inv(prev_sensor2keyego)
+>   # 这实际上消除了sensor部分,只保留ego运动!
+>   ```
+> 
+> **为什么要用keyego作为中介?**
 > 1. 我们只关心**相对运动**,不关心绝对位置
 > 2. 以当前帧为参考,可以**消除全局坐标的累积误差**
 > 3. 计算更简洁,**数值更稳定**
 > 
 > 这就像你在车里看外面,你不关心车在地图上的绝对位置,  
 > 只关心车相对于你现在的位置移动了多少!
+
+---
+
+**🔍 代码验证: BEV特征确实在ego坐标系下**
+
+**文件**: `bevdet4d.py` 行43-116
+
+```python
+def gen_grid(self, input, sensor2keyegos, bda, bda_adj=None):
+    """
+    Args:
+        input: (B, C, Dy, Dx)  bev_feat  ← 注意! 这已经是BEV特征了!
+        sensor2keyegos: List[
+            curr_sensor-->key_ego: (B, N_views, 4, 4)  ← 只用于计算ego运动
+            prev_sensor-->key_ego: (B, N_views, 4, 4)
+        ]
+    Returns:
+        grid: (B, Dy, Dx, 2)  ← 历史BEV在当前BEV网格中的采样位置
+    """
+    
+    # 关键代码 行87-93:
+    # 从sensor2keyego提取ego运动
+    curr_sensor2keyego = sensor2keyegos[0][:, 0:1, :, :]  # (B, 1, 4, 4)
+    prev_sensor2keyego = sensor2keyegos[1][:, 0:1, :, :]  # (B, 1, 4, 4)
+    
+    # ⭐ 核心: 计算 keyego → adjego (历史ego) 的变换
+    # 注释写的很清楚: "key_ego --> prev_cam_front --> prev_ego"
+    keyego2adjego = curr_sensor2keyego @ inv(prev_sensor2keyego)
+    # 展开就是:
+    # keyego2adjego = (bda @ curr_s2ego @ ego2global @ global2keyego) @
+    #                 inv(bda_prev @ prev_s2ego @ ego2global @ global2keyego)
+    #               = ... 简化后 ...
+    #               = curr_ego2keyego @ keyego2prev_ego
+    # → 这个矩阵描述了 当前ego → 历史ego 的运动!
+    
+    # 行95-106: 构造 feat2bev 矩阵
+    # 这个矩阵把BEV网格坐标 → ego坐标系下的米
+    feat2bev[0, 0] = grid_interval[0]     # vx: 网格间隔
+    feat2bev[1, 1] = grid_interval[1]     # vy
+    feat2bev[0, 2] = grid_lower_bound[0]  # x_min: BEV起点
+    feat2bev[1, 2] = grid_lower_bound[1]  # y_min
+    
+    # 行108-110: 完整变换
+    # 注释: "curr_feat_grid --> key ego --> prev_cam --> prev_ego --> prev_feat_grid"
+    tf = inv(feat2bev) @ keyego2adjego @ feat2bev
+    #    ^米→网格      ^ego运动      ^网格→米
+    grid = tf @ grid  # 得到历史帧BEV的采样位置
+```
+
+**关键结论**:
+1. ✅ BEV特征(`input`) 已经是在ego坐标系下的二维特征
+2. ✅ `feat2bev` 描述BEV网格 → ego坐标系(米) 的映射
+3. ✅ `keyego2adjego` 描述ego坐标系之间的运动,不是sensor坐标!
+4. ✅ `sensor2keyego` 只是用来**计算**ego之间的变换,不表示BEV在sensor坐标系下
 
 #### 🗺️ 坐标系6: BEV特征坐标系 (BEV Feature Grid)
 
@@ -2195,6 +2278,12 @@ sensor2keyego = global2keyego @ ego2global @ sensor2ego
   | (比如 128×128)      |
   |                    |
 y (0,H-1)        (W-1,H-1)
+
+⚠️ 重要: BEV特征是在ego坐标系下的俯视图!
+- BEV特征的原点对应车辆中心在ego坐标系下的位置
+- BEV的x轴对应ego坐标的x方向(车辆前方)
+- BEV的y轴对应ego坐标的y方向(车辆左侧)
+- 不是sensor坐标系! BEV已经是从相机图像转换而来的结果
 ```
 
 **数学关系**: BEV特征坐标 ↔ 真实BEV坐标(米)
